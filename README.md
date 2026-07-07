@@ -89,6 +89,21 @@ needs **two disks**: U-Boot verifies a fixed golden disk by policy while Linux r
 `PARTLABEL=rootfs` to the first-enumerated disk (the attacker's). PARTUUID, by contrast,
 is exploitable on a single disk.
 
+### QEMU determinism, `REPEAT`, and real hardware
+
+On `-M virt` the multi-disk demos are **deterministic**: U-Boot and Linux enumerate the
+transports in the same order, so the divergence is a *policy* one (fixed-slot verify vs
+first-match root) and passes every run. Genuine *enumeration-order* disagreement (the
+issue's "U-Boot … different search orders than Linux") is a real-hardware phenomenon.
+
+* `REPEAT=n make mldisk` boots up to `n` times and stops at the first evil mount
+  (`WANT` regex) — the "pass if it happens once" method. In QEMU it matches on try 1
+  (deterministic); on hardware with a USB-vs-SD probe race it catches the divergent
+  boot. `run-qemu.sh` also takes `USBDISK=<img>` to attach a USB drive (Linux `/dev/sda`),
+  the software analogue of SD-vs-USB.
+* For the authentic hardware reproduction (Raspberry Pi, SD golden vs USB attacker),
+  see [docs/raspberry-pi-repro.md](docs/raspberry-pi-repro.md).
+
 Boot logs are committed under `results/` with a `sha256`/QEMU-version provenance header.
 
 ## Verification model

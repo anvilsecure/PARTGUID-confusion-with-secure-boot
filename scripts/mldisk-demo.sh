@@ -11,8 +11,11 @@ LOG="results/boot-mldisk.log"; [ "$MODE" = partuuid ] && LOG="results/boot-mldis
 pkill -9 -f qemu-system-aarch64 2>/dev/null || true
 
 "${DRUN[@]}" scripts/make-multidisk.sh "$MODE"
-echo "[mldisk] booting two disks (vda=attacker, vdb=golden), mode=$MODE..."
-DISK2=out/image/disk2.img TIMEOUT=90 bash scripts/run-qemu.sh --capture
+echo "[mldisk] booting two disks (vda=attacker, vdb=golden), mode=$MODE, REPEAT=${REPEAT:-1}..."
+# WANT lets REPEAT=n retry until the evil mount appears (the "pass if once" method,
+# useful on setups where enumeration order is a race — see docs/raspberry-pi-repro.md).
+DISK2=out/image/disk2.img TIMEOUT=90 WANT='ROOTFS IDENTITY : EVIL' \
+    bash scripts/run-qemu.sh --capture
 cp out/boot.log "$LOG"
 
 if grep -qE 'eMMC.*VERIFIED OK' "$LOG" && grep -qE 'ROOTFS IDENTITY : EVIL' "$LOG"; then
