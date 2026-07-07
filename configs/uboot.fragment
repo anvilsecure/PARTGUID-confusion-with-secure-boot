@@ -1,0 +1,17 @@
+# Make the boot deterministic for the lab.
+#
+# qemu_arm64 defaults to BOOTSTD (`bootcmd = "bootflow scan -lb"`), which picks a
+# bootflow heuristically — not what we want when the whole point is to control which
+# slot is "the golden one". Instead we bake an explicit bootcmd that loads and
+# sources our signed boot script from the fixed golden boot slot (virtio 0:2).
+#
+# This models a vendor that hardcodes "boot from the system partition" in U-Boot.
+# Stage B will additionally require the loaded artifacts to be FIT-signed.
+# CONFIG_BOOTSTD_BOOTCOMMAND is not set
+CONFIG_USE_BOOTCOMMAND=y
+CONFIG_BOOTCOMMAND="virtio scan; echo [partguid-lab] sourcing golden boot.scr from virtio 0:2; ext4load virtio 0:2 ${scriptaddr} /boot.scr && source ${scriptaddr}"
+
+# `hash` command so boot.cmd can verify the rootfs it finds BY NAME (models the
+# vendor's verify_image step). CONFIG_SHA256 is already in the defconfig.
+CONFIG_CMD_HASH=y
+CONFIG_HASH=y

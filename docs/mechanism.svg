@@ -1,0 +1,69 @@
+<svg viewBox="0 0 900 560" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, system-ui, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">PARTUUID/PARTLABEL confusion</title>
+  <desc id="d">U-Boot verifies the golden partition by name while Linux mounts a different partition that shares the same PARTUUID, so unsigned code runs as root.</desc>
+  <defs>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#137333"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#c5221f"/></marker>
+  </defs>
+
+  <text x="450" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#1f2933">PARTGUID / PARTUUID confusion</text>
+  <text x="450" y="58" text-anchor="middle" font-size="13" fill="#5f6368">two resolvers, one identifier, two different partitions</text>
+
+  <!-- signed cmdline banner -->
+  <rect x="300" y="78" width="300" height="34" rx="6" fill="#eef1f8" stroke="#3b4b8f"/>
+  <text x="450" y="100" text-anchor="middle" font-size="13" fill="#3b4b8f">signed boot OK · cmdline: root=PARTUUID=X</text>
+
+  <!-- GPT disk -->
+  <text x="450" y="150" text-anchor="middle" font-size="13" font-weight="600" fill="#3c4043">GPT disk</text>
+  <!-- p1 evil -->
+  <rect x="350" y="162" width="200" height="78" rx="6" fill="#fce8e6" stroke="#c5221f" stroke-width="1.5"/>
+  <text x="450" y="188" text-anchor="middle" font-size="14" font-weight="700" fill="#c5221f">p1 · rootfs-decoy</text>
+  <text x="450" y="208" text-anchor="middle" font-size="12" fill="#c5221f">PARTUUID = X · EVIL</text>
+  <text x="450" y="226" text-anchor="middle" font-size="11" fill="#a03" >attacker-controlled</text>
+  <!-- p2 boot -->
+  <rect x="350" y="246" width="200" height="44" rx="6" fill="#f1f3f4" stroke="#5f6368"/>
+  <text x="450" y="273" text-anchor="middle" font-size="13" fill="#3c4043">p2 · boot (kernel)</text>
+  <!-- p3 good -->
+  <rect x="350" y="296" width="200" height="78" rx="6" fill="#e6f4ea" stroke="#137333" stroke-width="1.5"/>
+  <text x="450" y="322" text-anchor="middle" font-size="14" font-weight="700" fill="#137333">p3 · rootfs</text>
+  <text x="450" y="342" text-anchor="middle" font-size="12" fill="#137333">PARTUUID = X · GOOD</text>
+  <text x="450" y="360" text-anchor="middle" font-size="11" fill="#137333">golden, signed</text>
+
+  <!-- collision brace note -->
+  <text x="566" y="270" font-size="11" fill="#8a6d00">same</text>
+  <text x="566" y="284" font-size="11" fill="#8a6d00">PARTUUID</text>
+  <path d="M556,201 C580,201 580,335 556,335" fill="none" stroke="#e0a800" stroke-width="1.2" stroke-dasharray="3 3"/>
+
+  <!-- U-Boot resolver (left) -->
+  <rect x="40" y="238" width="250" height="96" rx="8" fill="#f8f9fa" stroke="#5f6368"/>
+  <text x="165" y="266" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2933">U-Boot · resolver ①</text>
+  <text x="165" y="288" text-anchor="middle" font-size="12" fill="#3c4043">finds rootfs BY NAME</text>
+  <text x="165" y="306" text-anchor="middle" font-size="12" fill="#3c4043">verifies it (hash / RSA-FIT)</text>
+  <text x="165" y="324" text-anchor="middle" font-size="11" fill="#137333">→ lands on p3 (GOOD)</text>
+  <path d="M290,300 C320,320 325,332 348,335" fill="none" stroke="#137333" stroke-width="2" marker-end="url(#ag)"/>
+  <text x="300" y="356" font-size="11" font-weight="600" fill="#137333">verifies ✓</text>
+
+  <!-- Linux resolver (right) -->
+  <rect x="610" y="238" width="250" height="96" rx="8" fill="#f8f9fa" stroke="#5f6368"/>
+  <text x="735" y="266" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2933">Linux · resolver ②</text>
+  <text x="735" y="288" text-anchor="middle" font-size="12" fill="#3c4043">resolves root=PARTUUID=X</text>
+  <text x="735" y="306" text-anchor="middle" font-size="12" fill="#3c4043">first match wins</text>
+  <text x="735" y="324" text-anchor="middle" font-size="11" fill="#c5221f">→ lands on p1 (EVIL)</text>
+  <path d="M610,290 C580,250 575,215 552,201" fill="none" stroke="#c5221f" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="560" y="230" font-size="11" font-weight="600" fill="#c5221f">mounts ✗</text>
+
+  <!-- outcome -->
+  <rect x="120" y="410" width="660" height="46" rx="8" fill="#fce8e6" stroke="#c5221f" stroke-width="1.5"/>
+  <text x="450" y="431" text-anchor="middle" font-size="14" font-weight="700" fill="#c5221f">U-Boot verified p3 (GOOD) · Linux mounted p1 (EVIL)</text>
+  <text x="450" y="449" text-anchor="middle" font-size="12" fill="#c5221f">the verified partition and the mounted partition are not the same one → unsigned code runs as root</text>
+
+  <!-- mitigation -->
+  <rect x="120" y="470" width="660" height="40" rx="8" fill="#e6f4ea" stroke="#137333"/>
+  <text x="450" y="495" text-anchor="middle" font-size="12.5" fill="#137333">Mitigation — dm-verity binds root to a cryptographic hash: the wrong partition fails verification and is rejected</text>
+
+  <!-- legend -->
+  <rect x="360" y="524" width="12" height="12" rx="2" fill="#e6f4ea" stroke="#137333"/>
+  <text x="378" y="534" font-size="11" fill="#3c4043">golden / signed</text>
+  <rect x="474" y="524" width="12" height="12" rx="2" fill="#fce8e6" stroke="#c5221f"/>
+  <text x="492" y="534" font-size="11" fill="#3c4043">attacker</text>
+</svg>

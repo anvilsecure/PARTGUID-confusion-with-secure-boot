@@ -1,0 +1,9 @@
+out/
+*.img
+*.scr
+*.log
+.DS_Store
+# vendored sources fetched by build scripts
+src/u-boot/
+src/linux/
+src/busybox/

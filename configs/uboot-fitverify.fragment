@@ -1,0 +1,21 @@
+# Real FIT-signature verified boot on qemu_arm64 — WITHOUT disabling OF_BOARD.
+#
+# The trick vs the parked Stage B: keep OF_BOARD on (U-Boot uses QEMU's runtime DTB,
+# so the kernel boots normally), and inject the RSA public key into that DTB by
+# passing a keyed copy to QEMU with `-dtb`. FIT_SIGNATURE then finds the key in the
+# control FDT (= QEMU's keyed DTB). No embedded DTB, no silent kernel, no broken
+# `source` (LEGACY_IMAGE_FORMAT stays on so boot.scr still sources).
+# CONFIG_BOOTSTD_BOOTCOMMAND is not set
+CONFIG_USE_BOOTCOMMAND=y
+CONFIG_BOOTCOMMAND="virtio scan; ext4load virtio 0:2 ${scriptaddr} /boot.scr && source ${scriptaddr}"
+
+# hash: verify the rootfs U-Boot finds BY NAME (models the rootfs verify_image step)
+CONFIG_CMD_HASH=y
+CONFIG_HASH=y
+
+# real signature verification of the kernel FIT
+CONFIG_FIT=y
+CONFIG_FIT_SIGNATURE=y
+CONFIG_FIT_FULL_CHECK=y
+CONFIG_RSA=y
+CONFIG_SHA256=y

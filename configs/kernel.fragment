@@ -1,0 +1,20 @@
+# Extra kernel config merged on top of arm64 defconfig.
+# Goal: boot on qemu virt, mount an ext4 root located by root=PARTUUID=, no initramfs.
+CONFIG_BLK_DEV_INITRD=n
+CONFIG_EFI_PARTITION=y
+CONFIG_EXT4_FS=y
+CONFIG_VIRTIO=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_MMIO=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_SERIAL_AMBA_PL011=y
+CONFIG_SERIAL_AMBA_PL011_CONSOLE=y
+# print the partition table at boot so we can see what the kernel enumerated
+CONFIG_DEBUG_KERNEL=y
+# dm-verity mitigation demo: built-in device-mapper + verity + dm-mod.create= cmdline
+CONFIG_MD=y
+CONFIG_BLK_DEV_DM=y
+CONFIG_DM_VERITY=y
+CONFIG_DM_INIT=y
