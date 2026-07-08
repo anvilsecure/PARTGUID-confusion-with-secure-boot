@@ -11,18 +11,18 @@
 # for a signature check) — the confusion is identical regardless of the crypto used.
 
 echo "=================================================================="
-echo " U-Boot GPT view of virtio 0:"
-part list virtio 0
+echo " U-Boot booted from virtio ${bootdev} (the medium carrying the boot slot)"
+part list virtio ${bootdev}
 
-echo " --- load_kernel (from fixed boot slot virtio 0:@@BOOTPART@@) ---"
-ext4load virtio 0:@@BOOTPART@@ ${kernel_addr_r} /Image
+echo " --- load_kernel (from boot slot virtio ${bootdev}:2) ---"
+ext4load virtio ${bootdev}:2 ${kernel_addr_r} /Image
 
-echo " --- load_rootfs + verify_image: locate rootfs BY NAME '@@ROOTNAME@@' ---"
-ext4load virtio 0#@@ROOTNAME@@ 0x46000000 /etc/rootfs-id
+echo " --- load_rootfs + verify_image: locate rootfs BY NAME '@@ROOTNAME@@' on virtio ${bootdev} ---"
+ext4load virtio ${bootdev}#@@ROOTNAME@@ 0x46000000 /etc/rootfs-id
 hash sha256 0x46000000 ${filesize} vhash
-echo " U-Boot: rootfs(name=@@ROOTNAME@@) marker sha256 = ${vhash}"
+echo " U-Boot: rootfs(name=@@ROOTNAME@@, virtio ${bootdev}) marker sha256 = ${vhash}"
 if test "${vhash}" = "@@GOODHASH@@"; then
-    echo " U-Boot: ROOTFS VERIFIED OK -> U-Boot TRUSTS the partition named '@@ROOTNAME@@'"
+    echo " U-Boot: ROOTFS VERIFIED OK -> U-Boot TRUSTS '@@ROOTNAME@@' on virtio ${bootdev}"
 else
     echo " U-Boot: ROOTFS VERIFICATION FAILED -> refusing to boot"
     reset

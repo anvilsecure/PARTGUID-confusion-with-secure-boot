@@ -67,27 +67,54 @@ make image STRATEGY=partuuid   # craft out/image/disk.img
 make run                       # boot it on the host under QEMU, -nographic
 ```
 
-`make experiments` runs the whole story as one ordered, self-asserting suite:
+`make experiments` runs the whole matrix (19 rows) as one self-asserting suite, grouped
+by verification mechanism (every row is single-shot — QEMU enumeration is deterministic).
+Run a single group with `scripts/experiments.sh ub|fit|dv` (each is quicker than `all`).
 
-| # | phase                         | expected                                                    |
-|---|-------------------------------|-------------------------------------------------------------|
-| 1 | `good-only`                   | golden rootfs → U-Boot verifies OK → **GOOD boots** (baseline: verification works) |
-| 2 | `evil-only`                   | evil rootfs → U-Boot hash-verify **FAILS → no boot** (baseline: verification is meaningful) |
-| 3 | hash bypass / **PARTUUID**    | dup PARTUUID on one disk → **EVIL mounted** (verify passed on good, Linux mounted evil) |
-| 4 | hash bypass / **PARTLABEL**   | two disks sharing label `rootfs` → **EVIL mounted** (U-Boot verifies the golden disk, Linux mounts the attacker disk) |
-| 4b| hash bypass / **PARTUUID** (multi-disk) | two disks sharing one PARTUUID (duplicate GUID on another drive) → **EVIL mounted** |
-| 5 | FIT bypass / **PARTUUID**     | **real RSA-2048** signed kernel verified, yet **EVIL mounted** |
-| 6 | dm-verity **mitigation**      | evil **rejected** (`panic: dm-verity device corrupted`) + good **verified & booted** |
+**Hash** — hash-based verify (Stage-A U-Boot, `booti`):
 
-Each phase's boot log is committed under `results/`. Single scenarios also run
-standalone: `make fit`, `make verity`, `make mldisk` (multi-disk PARTLABEL), or
+| # | row | expected |
+|---|-----|----------|
+| 1 | good-only | golden rootfs → verify OK → **GOOD boots** (baseline: verification works) |
+| 2 | evil-only | evil rootfs → hash-verify **FAILS → no boot** (baseline: verification is meaningful) |
+| 3 | hash bypass / PARTUUID | dup PARTUUID, one disk → **EVIL** |
+| 4 | PARTLABEL single-disk | both resolvers pick the first `rootfs` → U-Boot **catches it → no boot** |
+| 5 | multi-disk internal-only | device's internal disk alone (boot slot + golden rootfs) → **GOOD boots** |
+| 6 | multi-disk internal-evil | internal disk carries an evil rootfs → verify **FAILS → no boot** |
+| 7 | hash bypass / PARTUUID multi-disk | internal (golden, boots) + attacker USB (dup PARTUUID) → **EVIL** |
+| 8 | hash bypass / PARTLABEL multi-disk | internal (golden, boots) + attacker USB (same label) → **EVIL** |
+
+**FIT** — real RSA-2048 signed kernel + rootfs hash (`uboot-fit` + `-dtb`, `bootm`): the
+**same eight rows**, each additionally showing `Verifying Hash Integrity ... rsa2048:dev+
+OK` — so a genuinely signed kernel does not save the rootfs (bypass rows still mount EVIL).
+
+**DM-VERITY** — the mitigation (root bound to a hash via `dm-mod.create=`):
+
+| # | row | expected |
+|---|-----|----------|
+| 1 | verity PASSES good | genuine golden data → verity OK → **GOOD boots** |
+| 2 | verity / PARTUUID | attacker partition selected → **`panic: dm-verity device corrupted`** (evil blocked) |
+| 3 | verity / PARTLABEL multi-disk | attacker disk selected → **panic** (evil blocked) |
+
+Each row's boot log is committed under `results/`. Single scenarios also run standalone:
+`make fit`, `make verity`, `make mldisk [partuuid]` (multi-disk), or
 `make image STRATEGY=partuuid && make run`.
 
-Note on PARTLABEL (phase 4): on a **single** disk both U-Boot and Linux pick the first
-`rootfs`, so they agree and U-Boot catches the evil copy — no divergence. The bypass
-needs **two disks**: U-Boot verifies a fixed golden disk by policy while Linux resolves
-`PARTLABEL=rootfs` to the first-enumerated disk (the attacker's). PARTUUID, by contrast,
-is exploitable on a single disk.
+The **multi-disk** rows model the realistic attack — an embedded device (e.g. a router)
+plus an **attacker USB stick**:
+
+* The device's **internal media** (`disk.img`) holds the boot slot (kernel) *and* the
+  golden rootfs, and boots on its own — that's the `internal-only` baseline.
+* The **attacker USB** (`disk2.img`) carries **only a rootfs** (no boot slot) — the
+  attacker just inserts it and reboots.
+* U-Boot's bootcmd scans the disks for the boot script: the USB has none, so U-Boot
+  boots the internal disk and verifies *its* golden rootfs — yet Linux enumerates the
+  USB first and mounts *its* evil rootfs (same PARTUUID or PARTLABEL). The verified
+  medium and the mounted medium differ.
+
+Single-disk PARTLABEL (row 4) can't bypass: both resolvers pick the first `rootfs`, so
+U-Boot verifies exactly what Linux would mount and catches the evil copy. PARTUUID is
+exploitable even on a single disk (rows 3); PARTLABEL needs the two-disk case (row 8).
 
 ### QEMU determinism, `REPEAT`, and real hardware
 

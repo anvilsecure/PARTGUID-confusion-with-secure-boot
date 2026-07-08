@@ -7,7 +7,7 @@
 # `source` (LEGACY_IMAGE_FORMAT stays on so boot.scr still sources).
 # CONFIG_BOOTSTD_BOOTCOMMAND is not set
 CONFIG_USE_BOOTCOMMAND=y
-CONFIG_BOOTCOMMAND="virtio scan; ext4load virtio 0:2 ${scriptaddr} /boot.scr && source ${scriptaddr}"
+CONFIG_BOOTCOMMAND="virtio scan; setenv bootdev 0; ext4load virtio 0:2 ${scriptaddr} /boot.scr && source ${scriptaddr}; setenv bootdev 1; ext4load virtio 1:2 ${scriptaddr} /boot.scr && source ${scriptaddr}"
 
 # hash: verify the rootfs U-Boot finds BY NAME (models the rootfs verify_image step)
 CONFIG_CMD_HASH=y

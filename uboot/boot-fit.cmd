@@ -3,25 +3,24 @@
 #   - verify the rootfs U-Boot finds BY NAME '@@ROOTNAME@@' (sha256 of a marker)
 #   - boot a REAL RSA-signed kernel FIT (U-Boot enforces the signature via the key in
 #     QEMU's control DTB, injected with -dtb)
-# ...yet Linux still mounts a DIFFERENT partition (root=PARTUUID=@@PARTUUID@@).
+# ...yet Linux still mounts a DIFFERENT partition (root=@@ROOTSPEC@@).
 
 echo "=================================================================="
-echo " U-Boot: PARTUUIDs as U-Boot sees them"
-part uuid virtio 0:1 p1uuid && echo "   virtio 0:1 PARTUUID = ${p1uuid}"
-part uuid virtio 0:3 p3uuid && echo "   virtio 0:3 PARTUUID = ${p3uuid}"
+echo " U-Boot (FIT) booted from virtio ${bootdev}: verify rootfs by name + SIGNED FIT"
+part list virtio ${bootdev}
 
-echo " --- verify_image(rootfs): locate BY NAME '@@ROOTNAME@@' and hash-check ---"
-ext4load virtio 0#@@ROOTNAME@@ 0x46000000 /etc/rootfs-id
+echo " --- verify_image(rootfs): locate BY NAME '@@ROOTNAME@@' on virtio ${bootdev} ---"
+ext4load virtio ${bootdev}#@@ROOTNAME@@ 0x46000000 /etc/rootfs-id
 hash sha256 0x46000000 ${filesize} vhash
 if test "${vhash}" = "@@GOODHASH@@"; then
-    echo " U-Boot: ROOTFS(name=@@ROOTNAME@@) VERIFIED OK (golden partition)"
+    echo " U-Boot: ROOTFS(name=@@ROOTNAME@@, virtio ${bootdev}) VERIFIED OK (golden)"
 else
     echo " U-Boot: ROOTFS VERIFICATION FAILED -> refusing to boot"; reset
 fi
 
-echo " --- load + verify SIGNED kernel FIT (RSA-2048) ---"
-ext4load virtio 0:2 0x44000000 /kernel.itb
-setenv bootargs "console=ttyAMA0 root=PARTUUID=@@PARTUUID@@ rootfstype=ext4 rootwait rw init=/sbin/init panic=-1 partguid.verified"
+echo " --- load + verify SIGNED kernel FIT (RSA-2048) from virtio ${bootdev}:2 ---"
+ext4load virtio ${bootdev}:2 0x44000000 /kernel.itb
+setenv bootargs "console=ttyAMA0 root=@@ROOTSPEC@@ rootfstype=ext4 rootwait rw init=/sbin/init panic=-1 partguid.verified"
 echo "=================================================================="
 
 # bootm verifies the FIT signature against the key in the control DTB, then boots the

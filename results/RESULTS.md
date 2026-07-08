@@ -1,12 +1,33 @@
 # Results
 
-Reproduce with `make experiments` — one ordered, self-asserting suite:
-1. `good-only` (boots) · 2. `evil-only` (rejected) · 3. hash bypass PARTUUID single-disk
-(EVIL) · 4. hash bypass PARTLABEL multi-disk (EVIL) · 4b. hash bypass PARTUUID multi-disk
-(EVIL) · 5. FIT bypass PARTUUID (EVIL) · 6. dm-verity mitigation (evil blocked + good
-verified). Logs: `boot-good-only.log`, `boot-evil-only.log`, `boot-partuuid.log`,
-`boot-mldisk.log`, `boot-mldisk-partuuid.log`, `boot-fit-partuuid.log`,
-`boot-fit-tampered.log`, `boot-verity.log`, `boot-verity-good.log`.
+Reproduce with `make experiments` — a self-asserting **19-row** matrix grouped by
+verification mechanism (QEMU enumeration is deterministic so each row is single-shot).
+Run one group at a time with `scripts/experiments.sh ub|fit|dv`.
+
+* **Hash** (hash verify) — 8 rows. *single disk:* good-only (GOOD) · evil-only
+  (refused) · PARTUUID (EVIL) · PARTLABEL (U-Boot catches → no boot). *multi disk
+  (device + attacker USB):* internal-only (GOOD) · internal-evil (refused) · PARTUUID
+  (EVIL) · PARTLABEL (EVIL).
+* **FIT** (real RSA-2048 kernel + rootfs hash) — the same 8, each also showing
+  `rsa2048:dev+ OK`: a signed kernel still doesn't protect the rootfs.
+* **DM-VERITY** (mitigation) — 3 rows: good passes · PARTUUID blocked (panic) ·
+  PARTLABEL multi-disk blocked (panic).
+
+The single-disk PARTLABEL row is kept precisely to show the bypass **fails** there
+(both resolvers pick the first `rootfs`, so U-Boot verifies the same partition Linux
+would mount and catches the evil copy). Multi-disk PARTLABEL is where it bypasses.
+
+**Multi-disk model = router + attacker USB (realistic):** the device's internal media
+holds the boot slot (kernel) and the golden rootfs and boots on its own; the attacker
+USB carries only a rootfs (no boot slot). U-Boot's bootcmd scans the disks, skips the
+USB (no boot script), boots the internal disk and verifies its golden rootfs — but Linux
+enumerates the USB first and mounts its evil rootfs. The `internal-only` / `internal-evil`
+baselines boot the internal disk alone (GOOD / U-Boot-rejects).
+
+Logs in `results/`: `boot-{good,evil}-only.log`, `boot-partuuid.log`,
+`boot-partlabel.log`, `boot-mldisk-{good-only,evil-only,partuuid,partlabel}.log`,
+`boot-fit-*` (same 8, FIT), `boot-fit-tampered.log` (negative control),
+`boot-verity{,-good,-mldisk}.log`.
 Env: U-Boot 2024.07 (`qemu_arm64`), Linux 6.6, busybox 1.36.1, QEMU `-M virt`, virtio-blk.
 
 ## Baselines (phases 1–2) — the verification is real
@@ -82,48 +103,39 @@ U-Boot's check catches the evil copy and halts. No divergence.
 
 ⇒ PARTLABEL is **not** exploitable on a single disk (first-match wins for both).
 
-### Multi-disk PARTLABEL bypass — phase 4  ([boot-mldisk.log](boot-mldisk.log))
+### Multi-disk bypass — router + attacker USB  ([boot-mldisk-partlabel.log](boot-mldisk-partlabel.log), [boot-mldisk-partuuid.log](boot-mldisk-partuuid.log))
 
-Two virtio disks, each with a partition labelled `rootfs`:
+Realistic setup — a device with internal media plus an inserted attacker USB stick:
 
-- `disk.img`  = QEMU hd0 → **U-Boot virtio 1 / Linux vdb** = GOLDEN rootfs.
-- `disk2.img` = QEMU hd1 → **U-Boot virtio 0 / Linux vda** = attacker rootfs (+ boot slot).
+- `disk.img`  = **internal media** (eMMC): p1 golden rootfs + **p2 boot slot** (kernel).
+  QEMU hd0 → U-Boot virtio 1 / Linux vdb. Boots on its own.
+- `disk2.img` = **attacker USB**: p1 evil rootfs, **no boot slot**. QEMU hd1 → U-Boot
+  virtio 0 / Linux vda. Both partitions labelled `rootfs` (PARTLABEL case) or sharing
+  the same PARTUUID `1111…5555` (PARTUUID case — the issue's "duplicate PARTUUID on
+  another drive connected to the same system").
 
-Measured fact for qemu virt + virtio-mmio: **U-Boot and Linux enumerate the two disks
-in the *same* (reversed-from-`-device`) order** — hd1 is "first" for both. So the bypass
-is **not** from an ordering disagreement; it is from the vendor **policy**: U-Boot
-verifies `rootfs` on the fixed golden disk it trusts (virtio 1), while Linux resolves
-`root=PARTLABEL=rootfs` to the *first* match it enumerates (`vda` = the attacker disk):
+U-Boot's bootcmd scans the disks for `boot.scr`: the USB (virtio 0) has no boot slot, so
+U-Boot falls through to the internal disk (virtio 1) and boots it — `${bootdev}=1`:
 
 ```
- U-Boot: eMMC(virtio 1) rootfs VERIFIED OK -> U-Boot trusts the eMMC golden rootfs
- EXT4-fs (vda1): mounted filesystem baea5211-...f7d2 r/w      (= evil.img)
+ ** Invalid partition 2 **                                   (virtio 0 = USB, no boot slot)
+ U-Boot booted from virtio 1 ...                             (fell through to internal media)
+ U-Boot: ROOTFS VERIFIED OK -> ... on virtio 1              (verified the internal golden rootfs)
+ EXT4-fs (vda1): mounted filesystem baea5211-...f7d2 r/w     (= evil.img, the USB)
  #  ROOTFS IDENTITY : EVIL
 ```
 
-U-Boot validated one disk; Linux mounted another.
+U-Boot booted **and verified** the internal golden rootfs, yet Linux enumerated the USB
+(`vda`) first and mounted **its** evil rootfs. The attacker only had to insert a
+rootfs-only USB and reboot — no bootloader/kernel on the stick.
 
-### Multi-disk PARTUUID bypass — phase 4b  ([boot-mldisk-partuuid.log](boot-mldisk-partuuid.log))
+Baselines (`internal-only`, `internal-evil`) boot the internal disk **alone**: golden →
+**GOOD**; evil → U-Boot's verify fails → **no boot**. The attacker USB by itself is not
+bootable (no boot slot), which is exactly why the attack needs the device's own trusted
+boot chain.
 
-The issue's exact wording: *"duplicate PARTUUID … on another drive connected to the same
-system"*. Identical two-disk layout, but **both `rootfs` partitions carry the same unique
-GUID** `11111111-…-555555555555` (built with `make-multidisk.sh partuuid`), and the
-cmdline is `root=PARTUUID=11111111-…-555555555555`:
-
-```
- U-Boot: eMMC(virtio 1) rootfs VERIFIED OK -> U-Boot trusts the golden rootfs
- Kernel command line: ... root=PARTUUID=11111111-2222-3333-4444-555555555555 ...
- EXT4-fs (vda1): mounted filesystem baea5211-...f7d2 r/w      (= evil.img)
- #  ROOTFS IDENTITY : EVIL
-```
-
-U-Boot verified the golden drive (virtio 1); Linux resolved the duplicated PARTUUID to
-the first-enumerated drive (`vda` = attacker) and mounted the evil rootfs. This is the
-strongest form of the confusion, because a *unique* partition GUID is precisely what
-developers assume they can trust across drives.
-
-Summary: PARTUUID is exploitable **single-disk** (phase 3) *and* **across two drives**
-(4b); PARTLABEL needs the **two-disk** setup (4).
+Summary: PARTUUID is exploitable **single-disk** *and* across two drives; PARTLABEL needs
+the two-disk case (single-disk PARTLABEL is caught).
 
 ## `fit` — REAL RSA verified boot, still bypassed  ([boot-fit-partuuid.log](boot-fit-partuuid.log))
 

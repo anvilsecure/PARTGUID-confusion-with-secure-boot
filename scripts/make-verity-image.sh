@@ -38,7 +38,8 @@ echo "[verity] salt      = $SALT"
 
 # 2. boot.scr with the verity dm-mod.create cmdline
 stage="$(mktemp -d)"; cp "$KERNEL" "$stage/Image"
-sed -e "s/@@PARTUUID@@/$PARTUUID/g" \
+sed -e "s#@@VDATA@@#PARTUUID=$PARTUUID#g" \
+    -e "s#@@VHASH@@#/dev/vda4#g" \
     -e "s/@@ROOTHASH@@/$ROOTHASH/g" \
     -e "s/@@SALT@@/$SALT/g" \
     uboot/boot-verity.cmd > "$stage/boot.cmd"

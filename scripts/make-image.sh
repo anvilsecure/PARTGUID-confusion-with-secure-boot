@@ -77,7 +77,8 @@ if [ "$STAGE" = "fit" ]; then
     [ -f out/stage-b/kernel.itb ] || { echo "missing out/stage-b/kernel.itb — run build-uboot-fitverify.sh"; exit 1; }
     cp out/stage-b/kernel.itb "$stage/kernel.itb"
     sed -e "s/@@ROOTNAME@@/$ROOTNAME/g" \
-        -e "s/@@PARTUUID@@/${GUID_X,,}/g" \
+        -e "s#@@ROOTSPEC@@#$ROOTSPEC#g" \
+        -e "s/@@VERIFYDEV@@/0/g" \
         -e "s/@@GOODHASH@@/$GOODHASH/g" \
         uboot/boot-fit.cmd > "$stage/boot.cmd"
 else
@@ -85,6 +86,7 @@ else
     sed -e "s/@@BOOTPART@@/$BOOTPART/g" \
         -e "s/@@ROOTNAME@@/$ROOTNAME/g" \
         -e "s#@@ROOTSPEC@@#$ROOTSPEC#g" \
+        -e "s/@@VERIFYDEV@@/0/g" \
         -e "s/@@GOODHASH@@/$GOODHASH/g" \
         uboot/boot.cmd > "$stage/boot.cmd"
 fi
