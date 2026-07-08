@@ -26,7 +26,7 @@ to "block device", and the fact that two parsers compute it differently.
 This lab builds the smallest end-to-end system that exhibits the divergence and lets
 us characterize *which* GPT shapes are vulnerable — see
 [results/RESULTS.md](results/RESULTS.md). The mechanism at a glance:
-[docs/mechanism.svg](docs/mechanism.svg).
+[docs/mechanism.png](docs/mechanism.png).
 
 The boot flow models the vendor `bootcmd` from the issue: U-Boot loads the kernel,
 locates the rootfs **by name** (`#rootfs`) and **verifies** it (a `sha256` check
