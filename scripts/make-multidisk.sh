@@ -11,10 +11,9 @@
 # internal golden rootfs. Linux enumerates vda (the USB) first and mounts its evil
 # rootfs. With ONE disk attached it is virtio0/vda and ${bootdev}=0.
 #
-# Usage: make-multidisk.sh [scenario] [stage]
+# Usage: make-multidisk.sh [scenario]
 #   scenario: partlabel|partuuid  -> bypass, build BOTH disks (internal=golden, USB=evil)
 #             good-only|evil-only -> baseline, build only the internal disk (boot alone)
-#   stage:    a (hash/booti) | fit (RSA FIT/bootm)
 set -euo pipefail
 OUT=out/image; mkdir -p "$OUT"
 DISK="$OUT/disk.img"; DISK2="$OUT/disk2.img"
@@ -24,7 +23,7 @@ GOODHASH="$(sha256sum rootfs/good/etc/rootfs-id | awk '{print $1}')"
 ROOTNAME=rootfs
 GUID_X="11111111-2222-3333-4444-555555555555"
 
-SCEN="${1:-partlabel}"; STAGE="${2:-a}"
+SCEN="${1:-partlabel}"
 INT_FS="$GOOD"; ATT=1; ROOTSPEC="PARTLABEL=rootfs"; IGUID=(); AGUID=(); EXPECT=EVIL
 case "$SCEN" in
   partlabel) ;;                                                                # both disks, distinct auto GUIDs
@@ -36,12 +35,7 @@ esac
 
 # boot.scr on the internal disk's boot slot (uses ${bootdev} at runtime)
 stage="$(mktemp -d)"
-if [ "$STAGE" = fit ]; then
-    [ -f out/stage-b/kernel.itb ] || { echo "missing out/stage-b/kernel.itb — run build-uboot-fitverify.sh"; exit 1; }
-    cp out/stage-b/kernel.itb "$stage/kernel.itb"; TPL=uboot/boot-fit.cmd
-else
-    cp "$KERNEL" "$stage/Image"; TPL=uboot/boot.cmd
-fi
+cp "$KERNEL" "$stage/Image"; TPL=uboot/boot.cmd
 sed -e "s/@@ROOTNAME@@/$ROOTNAME/g" -e "s#@@ROOTSPEC@@#$ROOTSPEC#g" -e "s/@@GOODHASH@@/$GOODHASH/g" \
     "$TPL" > "$stage/boot.cmd"
 mkimage -A arm64 -O linux -T script -C none -n partguid-mldisk -d "$stage/boot.cmd" "$stage/boot.scr" >/dev/null
@@ -69,4 +63,4 @@ else
 fi
 
 echo "$EXPECT" > "$OUT/EXPECT"
-echo "[mldisk] scenario=$SCEN stage=$STAGE root=$ROOTSPEC expect=$EXPECT"
+echo "[mldisk] scenario=$SCEN root=$ROOTSPEC expect=$EXPECT"

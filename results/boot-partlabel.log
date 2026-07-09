@@ -1,0 +1,55 @@
+# partguid-confusion-lab capture
+# qemu      : QEMU emulator version 11.0.1
+# u-boot.bin: sha256 63d31e9d834780db3363105cbd551ca52ab6b99829564235853d8e880f0c9e4a
+# disk.img  : sha256 012b93b99b24b830edfa932ef069e071ee67898fe7f0a3023aeaf672a540c18e
+# expect    : EVIL rootfs mounted
+# ----------------------------------------------------------------
+
+
+U-Boot 2024.07-dirty (Jul 08 2026 - 15:01:13 +0000)
+
+DRAM:  512 MiB
+Core:  51 devices, 14 uclasses, devicetree: board
+Flash: 64 MiB
+Loading Environment from Flash... *** Warning - bad CRC, using default environment
+
+In:    serial,usbkbd
+Out:   serial,vidconsole
+Err:   serial,vidconsole
+No USB controllers found
+Net:   eth0: virtio-net#32
+[?25h
+starting USB...
+No USB controllers found
+Hit any key to stop autoboot:  2  1  0 
+2094 bytes read in 1 ms (2 MiB/s)
+## Executing script at 40200000
+==================================================================
+ U-Boot booted from virtio 0 (the medium carrying the boot slot)
+
+Partition Map for virtio device 0  --   Partition Type: EFI
+
+Part	Start LBA	End LBA		Name
+	Attributes
+	Type GUID
+	Partition GUID
+  1	0x00000800	0x000187ff	"rootfs"
+	attrs:	0x0000000000000000
+	type:	0fc63daf-8483-4772-8e79-3d69d8477de4
+	guid:	aaaaaaaa-1111-2222-3333-444444444444
+  2	0x00018800	0x000587ff	"boot"
+	attrs:	0x0000000000000000
+	type:	0fc63daf-8483-4772-8e79-3d69d8477de4
+	guid:	01053959-4c76-4b88-8e09-1a13b40c1ffd
+  3	0x00058800	0x000707ff	"rootfs"
+	attrs:	0x0000000000000000
+	type:	0fc63daf-8483-4772-8e79-3d69d8477de4
+	guid:	bbbbbbbb-1111-2222-3333-444444444444
+ --- load_kernel (from boot slot virtio 0:2) ---
+41792000 bytes read in 80 ms (498.2 MiB/s)
+ --- load_rootfs + verify_image: locate rootfs BY NAME rootfs on virtio 0 ---
+66 bytes read in 1 ms (64.5 KiB/s)
+sha256 for 46000000 ... 46000041 ==> 4d823152d6c5e2b95c45334e43fbc1bece21de5bacf7bdc685328aacb69e4633
+ U-Boot: rootfs(name=rootfs, virtio 0) marker sha256 = 4d823152d6c5e2b95c45334e43fbc1bece21de5bacf7bdc685328aacb69e4633
+ U-Boot: ROOTFS VERIFICATION FAILED -> refusing to boot
+resetting ...

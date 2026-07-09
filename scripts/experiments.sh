@@ -1,25 +1,27 @@
 #!/usr/bin/env bash
-# Full PARTUUID/PARTLABEL confusion matrix, grouped by verification mechanism. Container crafts artifacts;
-# host QEMU boots them. Each row asserts on its captured log (results/boot-*.log).
-# QEMU enumeration is deterministic here, so every row is single-shot (no REPEAT).
+# PARTUUID/PARTLABEL confusion matrix, grouped by identifier type. The container crafts
+# the artifacts; the host QEMU boots them. Each row asserts on its captured log
+# (results/boot-*.log). QEMU enumeration is deterministic, so every row is single-shot.
 #
-#   U-Boot    hash-based verify (Stage-A u-boot, booti)
-#   FIT       real RSA-2048 signed kernel + rootfs hash (uboot-fit + -dtb, bootm)
-#   DM-VERITY the mitigation (root bound to a hash; wrong partition panics)
+#   BASELINE   verification works: accepts the golden rootfs, rejects an evil one
+#              (single disk + realistic multi-disk device). Always runs.
+#   PARTUUID   duplicate-PARTUUID bypass (single disk AND across two disks)
+#   PARTLABEL  shared PARTLABEL: caught on one disk, bypassed across two disks
+#   DM-VERITY  the mitigation: root bound to a hash, so the confused partition panics
+#              (runs under `all` only)
 set -uo pipefail   # NOT -e: a failing row must not abort the suite
 cd "$(dirname "$0")/.."
 
-# GROUP selects which group(s) to run: ub | fit | dv | all (default). Running one
-# group at a time keeps each invocation short (the full matrix is ~25 min; a single
-# background task can be terminated for running too long).
+# GROUP: all (default) | partuuid | partlabel. A confusion group always runs the shared
+# BASELINE rows first (they give the accept-good / reject-evil context); the DM-VERITY
+# mitigation group runs only under `all`.
 GROUP="${1:-all}"
-want_grp(){ [ "$GROUP" = all ] || [ "$GROUP" = "$1" ]; }
+case "$GROUP" in all|partuuid|partlabel) ;; *) echo "usage: $0 [all|partuuid|partlabel]"; exit 2;; esac
+want(){ [ "$GROUP" = all ] || [ "$GROUP" = "$1" ]; }
 
 DRUN=(docker run --rm -t -v "$PWD":/work -w /work partguid-lab:latest)
-FITUBOOT=out/uboot-fit/u-boot.bin
-KEYDTB=out/stage-b/keyed.dtb
 RC=0
-declare -a ROWS_UB ROWS_FIT ROWS_DV
+declare -a ROWS_BASE ROWS_PU ROWS_PL ROWS_DV
 qkill(){ pkill -9 -f qemu-system-aarch64 2>/dev/null || true; }
 
 # res <group> <label> <log> <pattern...>   ('!re' = must be ABSENT)
@@ -31,89 +33,64 @@ res(){
         else grep -qE "$p" "$log" 2>/dev/null || ok=0; fi
     done
     local tag="[OK]  "; [ "$ok" = 1 ] || { tag="[FAIL]"; RC=1; }
-    case "$g" in ub) ROWS_UB+=("$tag $lab");; fit) ROWS_FIT+=("$tag $lab");; dv) ROWS_DV+=("$tag $lab");; esac
+    case "$g" in base) ROWS_BASE+=("$tag $lab");; pu) ROWS_PU+=("$tag $lab");; pl) ROWS_PL+=("$tag $lab");; dv) ROWS_DV+=("$tag $lab");; esac
 }
 cap(){ TIMEOUT="${TIMEOUT:-90}" bash scripts/run-qemu.sh --capture >/dev/null 2>&1; cp out/boot.log "results/$1"; }
 
 echo "[exp] rootfs ground-truth UUIDs:"; "${DRUN[@]}" bash -c '
   for f in good evil; do echo "  $f.img = $(dumpe2fs -h out/rootfs/$f.img 2>/dev/null | awk -F: "/Filesystem UUID/{gsub(/ /,\"\",\$2);print \$2}")"; done' | tee results/rootfs-uuids.txt
 
-EVIL='ROOTFS IDENTITY : EVIL'; GOOD='ROOTFS IDENTITY : GOOD'
-FAIL='ROOTFS VERIFICATION FAILED'; RSA='rsa2048:dev\+ OK'; PANIC='dm-verity device corrupted'
+EVIL='ROOTFS IDENTITY : EVIL'; GOOD='ROOTFS IDENTITY : GOOD'; FAIL='ROOTFS VERIFICATION FAILED'
+PANIC='dm-verity device corrupted'
 
-########################## U-Boot (hash verify) ##########################
-if want_grp ub; then
-echo; echo "########## HASH group (Stage-A U-Boot, booti) ##########"
+########################## BASELINE (always) ##########################
+echo; echo "########## BASELINE (verification accepts good, rejects evil) ##########"
 # -- single disk --
 qkill; "${DRUN[@]}" scripts/make-image.sh good-only >/dev/null;  cap boot-good-only.log
-res ub "1. good-only boots (GOOD)"                 results/boot-good-only.log "$GOOD" "!$EVIL"
+res base "1. good-only boots (GOOD)"                     results/boot-good-only.log "$GOOD" "!$EVIL"
 qkill; "${DRUN[@]}" scripts/make-image.sh evil-only >/dev/null;  cap boot-evil-only.log
-res ub "2. evil-only refused (no boot)"            results/boot-evil-only.log "$FAIL" "!ROOTFS IDENTITY :"
-qkill; "${DRUN[@]}" scripts/make-image.sh partuuid  >/dev/null;  cap boot-partuuid.log
-res ub "3. hash bypass / PARTUUID (EVIL)"          results/boot-partuuid.log "$EVIL"
-qkill; "${DRUN[@]}" scripts/make-image.sh partlabel >/dev/null;  cap boot-partlabel.log
-res ub "4. PARTLABEL single-disk: U-Boot catches it (no boot)" results/boot-partlabel.log "$FAIL" "!ROOTFS IDENTITY :"
+res base "2. evil-only refused (no boot)"                results/boot-evil-only.log "$FAIL" "!ROOTFS IDENTITY :"
 # -- multi disk (internal media + attacker USB) --
-# baselines boot the INTERNAL disk alone (no USB); bypass adds the attacker USB (DISK2)
 qkill; "${DRUN[@]}" scripts/make-multidisk.sh good-only >/dev/null; cap boot-mldisk-good-only.log
-res ub "5. multi-disk internal-only boots (GOOD)"       results/boot-mldisk-good-only.log "$GOOD" "!$EVIL"
+res base "5. multi-disk internal-only boots (GOOD)"      results/boot-mldisk-good-only.log "$GOOD" "!$EVIL"
 qkill; "${DRUN[@]}" scripts/make-multidisk.sh evil-only >/dev/null; cap boot-mldisk-evil-only.log
-res ub "6. multi-disk internal-evil refused (no boot)"  results/boot-mldisk-evil-only.log "$FAIL" "!ROOTFS IDENTITY :"
-qkill; "${DRUN[@]}" scripts/make-multidisk.sh partuuid  >/dev/null; DISK2=out/image/disk2.img cap boot-mldisk-partuuid.log
-res ub "7. hash bypass / PARTUUID multi-disk (EVIL)"    results/boot-mldisk-partuuid.log "$EVIL"
-qkill; "${DRUN[@]}" scripts/make-multidisk.sh partlabel >/dev/null; DISK2=out/image/disk2.img cap boot-mldisk-partlabel.log
-res ub "8. hash bypass / PARTLABEL multi-disk (EVIL)"   results/boot-mldisk-partlabel.log "$EVIL"
+res base "6. multi-disk internal-evil refused (no boot)" results/boot-mldisk-evil-only.log "$FAIL" "!ROOTFS IDENTITY :"
 
-fi  # end U-Boot group
-
-########################## FIT (real RSA) ##########################
-if want_grp fit; then
-echo; echo "########## FIT group (building signed-boot artifacts) ##########"
-[ -f "$FITUBOOT" ] || "${DRUN[@]}" scripts/build-uboot-fitverify.sh
-if [ ! -f out/stage-b/live.dtb ]; then          # bootstrap a known-bootable control DTB
-    qkill; "${DRUN[@]}" scripts/make-image.sh partuuid >/dev/null; cap boot-bootstrap.log
-    "${DRUN[@]}" bash -c 'seek=$(sgdisk -i 1 out/image/disk.img|awk "/First sector/{print \$3}"); dd if=out/image/disk.img of=/tmp/p1.img bs=512 skip=$seek count=98304 status=none; debugfs -R "dump /live.dtb out/stage-b/live.dtb" /tmp/p1.img'
+########################## PARTUUID ##########################
+if want partuuid; then
+echo; echo "########## PARTUUID (duplicate-PARTUUID bypass) ##########"
+qkill; "${DRUN[@]}" scripts/make-image.sh partuuid >/dev/null; cap boot-partuuid.log
+res pu "3. PARTUUID single-disk bypass (EVIL)"           results/boot-partuuid.log "$EVIL"
+qkill; "${DRUN[@]}" scripts/make-multidisk.sh partuuid >/dev/null; DISK2=out/image/disk2.img cap boot-mldisk-partuuid.log
+res pu "7. PARTUUID multi-disk bypass (EVIL)"            results/boot-mldisk-partuuid.log "$EVIL"
 fi
-"${DRUN[@]}" scripts/sign-fit.sh out/stage-b/live.dtb >/dev/null   # (re)sign over the current kernel + key the live dtb
 
-# -- single disk --
-qkill; "${DRUN[@]}" scripts/make-image.sh good-only fit >/dev/null; UBOOT=$FITUBOOT DTB=$KEYDTB cap boot-fit-good-only.log
-res fit "1. FIT good-only boots (GOOD)"            results/boot-fit-good-only.log "$GOOD" "$RSA" "!$EVIL"
-qkill; "${DRUN[@]}" scripts/make-image.sh evil-only fit >/dev/null; UBOOT=$FITUBOOT DTB=$KEYDTB cap boot-fit-evil-only.log
-res fit "2. FIT evil-only refused (no boot)"       results/boot-fit-evil-only.log "$FAIL" "!ROOTFS IDENTITY :"
-qkill; "${DRUN[@]}" scripts/make-image.sh partuuid fit >/dev/null;  UBOOT=$FITUBOOT DTB=$KEYDTB cap boot-fit-partuuid.log
-res fit "3. FIT bypass / PARTUUID (rsa OK + EVIL)" results/boot-fit-partuuid.log "$RSA" "$EVIL"
-qkill; "${DRUN[@]}" scripts/make-image.sh partlabel fit >/dev/null; UBOOT=$FITUBOOT DTB=$KEYDTB cap boot-fit-partlabel.log
-res fit "4. FIT PARTLABEL single-disk: caught (no boot)" results/boot-fit-partlabel.log "$FAIL" "!ROOTFS IDENTITY :"
-# -- multi disk (internal media + attacker USB) --
-qkill; "${DRUN[@]}" scripts/make-multidisk.sh good-only fit >/dev/null; UBOOT=$FITUBOOT DTB=$KEYDTB cap boot-fit-mldisk-good-only.log
-res fit "5. FIT multi-disk internal-only boots (GOOD)"      results/boot-fit-mldisk-good-only.log "$GOOD" "$RSA" "!$EVIL"
-qkill; "${DRUN[@]}" scripts/make-multidisk.sh evil-only fit >/dev/null; UBOOT=$FITUBOOT DTB=$KEYDTB cap boot-fit-mldisk-evil-only.log
-res fit "6. FIT multi-disk internal-evil refused (no boot)" results/boot-fit-mldisk-evil-only.log "$FAIL" "!ROOTFS IDENTITY :"
-qkill; "${DRUN[@]}" scripts/make-multidisk.sh partuuid fit >/dev/null; UBOOT=$FITUBOOT DTB=$KEYDTB DISK2=out/image/disk2.img cap boot-fit-mldisk-partuuid.log
-res fit "7. FIT bypass / PARTUUID multi-disk (rsa OK + EVIL)"  results/boot-fit-mldisk-partuuid.log "$RSA" "$EVIL"
-qkill; "${DRUN[@]}" scripts/make-multidisk.sh partlabel fit >/dev/null; UBOOT=$FITUBOOT DTB=$KEYDTB DISK2=out/image/disk2.img cap boot-fit-mldisk-partlabel.log
-res fit "8. FIT bypass / PARTLABEL multi-disk (rsa OK + EVIL)" results/boot-fit-mldisk-partlabel.log "$RSA" "$EVIL"
+########################## PARTLABEL ##########################
+if want partlabel; then
+echo; echo "########## PARTLABEL (caught single-disk, bypassed multi-disk) ##########"
+qkill; "${DRUN[@]}" scripts/make-image.sh partlabel >/dev/null; cap boot-partlabel.log
+res pl "4. PARTLABEL single-disk: U-Boot catches it (no boot)" results/boot-partlabel.log "$FAIL" "!ROOTFS IDENTITY :"
+qkill; "${DRUN[@]}" scripts/make-multidisk.sh partlabel >/dev/null; DISK2=out/image/disk2.img cap boot-mldisk-partlabel.log
+res pl "8. PARTLABEL multi-disk bypass (EVIL)"           results/boot-mldisk-partlabel.log "$EVIL"
+fi
 
-fi  # end FIT group
-
-########################## DM-VERITY (mitigation) ##########################
-if want_grp dv; then
-echo; echo "########## DM-VERITY group ##########"
-qkill; "${DRUN[@]}" scripts/make-verity-image.sh good >/dev/null;  cap boot-verity-good.log
-res dv "1. verity PASSES good"                                 results/boot-verity-good.log "$GOOD" "!$PANIC"
-qkill; "${DRUN[@]}" scripts/make-verity-image.sh evil >/dev/null;  cap boot-verity.log
-res dv "2. verity bypass / PARTUUID BLOCKS evil (panic)"       results/boot-verity.log "$PANIC" "!$EVIL"
-qkill; "${DRUN[@]}" scripts/make-verity-multidisk.sh >/dev/null;   DISK2=out/image/disk2.img cap boot-verity-mldisk.log
-res dv "3. verity bypass / PARTLABEL multi-disk BLOCKS evil (panic)" results/boot-verity-mldisk.log "$PANIC" "!$EVIL"
-
-fi  # end DM-VERITY group
+########################## DM-VERITY (mitigation, all only) ##########################
+if [ "$GROUP" = all ]; then
+echo; echo "########## DM-VERITY (mitigation: root bound to a hash) ##########"
+qkill; "${DRUN[@]}" scripts/make-verity-image.sh good >/dev/null; cap boot-verity-good.log
+res dv "verity PASSES good (GOOD boots)"                       results/boot-verity-good.log "$GOOD" "!$PANIC"
+qkill; "${DRUN[@]}" scripts/make-verity-image.sh evil >/dev/null; cap boot-verity.log
+res dv "verity / PARTUUID: evil blocked (panic)"              results/boot-verity.log "$PANIC" "!$EVIL"
+qkill; "${DRUN[@]}" scripts/make-verity-multidisk.sh >/dev/null; DISK2=out/image/disk2.img cap boot-verity-mldisk.log
+res dv "verity / PARTLABEL multi-disk: evil blocked (panic)"  results/boot-verity-mldisk.log "$PANIC" "!$EVIL"
+fi
 
 qkill
 echo; echo "==================== EXPERIMENT SUMMARY ===================="
-if want_grp ub;  then echo "Hash";           for r in "${ROWS_UB[@]}";  do echo "  $r"; done; fi
-if want_grp fit; then echo; echo "FIT";     for r in "${ROWS_FIT[@]}"; do echo "  $r"; done; fi
-if want_grp dv;  then echo; echo "DM-VERITY"; for r in "${ROWS_DV[@]}"; do echo "  $r"; done; fi
+echo "BASELINE";              for r in "${ROWS_BASE[@]}"; do echo "  $r"; done
+if want partuuid;  then echo; echo "PARTUUID";  for r in "${ROWS_PU[@]}"; do echo "  $r"; done; fi
+if want partlabel; then echo; echo "PARTLABEL"; for r in "${ROWS_PL[@]}"; do echo "  $r"; done; fi
+if [ "$GROUP" = all ]; then echo; echo "DM-VERITY"; for r in "${ROWS_DV[@]}"; do echo "  $r"; done; fi
 echo "==========================================================="
-[ "$RC" = 0 ] && echo "[exp] ALL PHASES MATCHED EXPECTATIONS" || echo "[exp] SOME PHASE FAILED"
+[ "$RC" = 0 ] && echo "[exp] ALL ROWS MATCHED EXPECTATIONS" || echo "[exp] SOME ROW FAILED"
 exit "$RC"

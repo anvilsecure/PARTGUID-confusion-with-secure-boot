@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# UBOOT overridable so the FIT-verify build (out/uboot-fit/u-boot.bin) can be booted.
+# U-Boot binary booted as -bios (overridable via UBOOT env).
 UBOOT="${UBOOT:-out/uboot/u-boot.bin}"
 DISK=out/image/disk.img
 LOG=out/boot.log
@@ -25,13 +25,6 @@ QEMU=(qemu-system-aarch64
     -bios "$UBOOT"
     -drive if=none,file="$DISK",format=raw,id=hd0
     -device virtio-blk-device,drive=hd0)
-
-# FIT-verify mode passes a key-bearing control DTB to QEMU (-> U-Boot's control FDT).
-if [ -n "${DTB:-}" ]; then
-    [ -f "$DTB" ] || { echo "missing DTB=$DTB"; exit 1; }
-    QEMU+=(-dtb "$DTB")
-    echo "[run] using control DTB: $DTB"
-fi
 
 # Optional second disk (multi-disk PARTLABEL demo). Added AFTER hd0 so it enumerates
 # as virtio 1 in U-Boot / vdb in Linux, while $DISK is virtio 0 / vda.

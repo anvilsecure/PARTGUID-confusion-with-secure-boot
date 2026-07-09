@@ -29,7 +29,6 @@ done
 GUID_X="11111111-2222-3333-4444-555555555555"   # shared PARTUUID (partuuid case)
 GUID_A="aaaaaaaa-1111-2222-3333-444444444444"   # distinct (partlabel case)
 GUID_B="bbbbbbbb-1111-2222-3333-444444444444"
-BOOTPART=2
 ROOTNAME=rootfs                                  # the name U-Boot verifies
 
 # sha256 of the GOLDEN rootfs marker — U-Boot recomputes this over the file it loads
@@ -65,31 +64,15 @@ case "$STRATEGY" in
     echo "unknown scenario: $STRATEGY (use: good-only | evil-only | partuuid | partlabel)"; exit 2 ;;
 esac
 
-# STAGE=a (default): boot slot = raw Image + boot.scr (hash-verify rootfs, booti).
-# STAGE=fit: boot slot = SIGNED kernel.itb + boot.scr (hash-verify rootfs, then bootm
-#            the RSA-signed FIT). Boot with u-boot-fit.bin + `-dtb keyed.dtb`.
-STAGE="${2:-a}"
-echo "[image] scenario=$STRATEGY  root=$ROOTSPEC  U-Boot verifies name='$ROOTNAME'  stage=$STAGE  expect=$EXPECT"
+echo "[image] scenario=$STRATEGY  root=$ROOTSPEC  U-Boot verifies name='$ROOTNAME'  expect=$EXPECT"
 
 # --- boot partition fs --------------------------------------------------------
 stage="$(mktemp -d)"
-if [ "$STAGE" = "fit" ]; then
-    [ -f out/stage-b/kernel.itb ] || { echo "missing out/stage-b/kernel.itb — run build-uboot-fitverify.sh"; exit 1; }
-    cp out/stage-b/kernel.itb "$stage/kernel.itb"
-    sed -e "s/@@ROOTNAME@@/$ROOTNAME/g" \
-        -e "s#@@ROOTSPEC@@#$ROOTSPEC#g" \
-        -e "s/@@VERIFYDEV@@/0/g" \
-        -e "s/@@GOODHASH@@/$GOODHASH/g" \
-        uboot/boot-fit.cmd > "$stage/boot.cmd"
-else
-    cp "$KERNEL" "$stage/Image"
-    sed -e "s/@@BOOTPART@@/$BOOTPART/g" \
-        -e "s/@@ROOTNAME@@/$ROOTNAME/g" \
-        -e "s#@@ROOTSPEC@@#$ROOTSPEC#g" \
-        -e "s/@@VERIFYDEV@@/0/g" \
-        -e "s/@@GOODHASH@@/$GOODHASH/g" \
-        uboot/boot.cmd > "$stage/boot.cmd"
-fi
+cp "$KERNEL" "$stage/Image"
+sed -e "s/@@ROOTNAME@@/$ROOTNAME/g" \
+    -e "s#@@ROOTSPEC@@#$ROOTSPEC#g" \
+    -e "s/@@GOODHASH@@/$GOODHASH/g" \
+    uboot/boot.cmd > "$stage/boot.cmd"
 mkimage -A arm64 -O linux -T script -C none -n partguid-lab \
     -d "$stage/boot.cmd" "$stage/boot.scr" >/dev/null
 rm -f "$OUT/boot.img"

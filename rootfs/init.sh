@@ -25,32 +25,14 @@ echo "#  mounted as /    : ${ROOTSRC}   (fs UUID ${ROOTFSUUID})"
 echo "########################################################################"
 echo
 
-# Debug/infra: save the live device tree QEMU+U-Boot handed this kernel, so the lab
-# can reuse a known-bootable control DTB (for the FIT-verify -dtb path).
-cat /sys/firmware/fdt > /live.dtb 2>/dev/null; sync
-
 case "$ID" in
   *EVIL*)
-    # Only claim a secure-boot *bypass* when U-Boot actually verified a signed
-    # kernel this boot (Stage B sets partguid.verified on the cmdline). In Stage A
-    # there is no crypto, so state precisely what was shown and nothing more.
-    case " $CMDLINE " in
-      *" partguid.verified "*)
-        echo "  *** ROOTFS VERIFICATION BYPASSED VIA PARTITION-ID CONFUSION ***"
-        echo "  U-Boot verified the rootfs it selected BY NAME ('rootfs'), and that"
-        echo "  check passed on the GOLDEN partition. Yet THIS partition is running:"
-        echo "  Linux re-resolved the root identifier (PARTUUID/PARTLABEL) to a"
-        echo "  different, attacker-controlled partition. The verified partition and"
-        echo "  the mounted partition are not the same one."
-        ;;
-      *)
-        echo "  PARTUUID COLLISION DEMONSTRATED (Stage A — no crypto verified this boot)"
-        echo "  The signed-cmdline assumption is violated: the cmdline names the golden"
-        echo "  PARTUUID, but Linux resolved it to THIS unsigned partition. With real"
-        echo "  verified boot (Stage B) over a different slot, this would mount unsigned"
-        echo "  code as root while secure boot still reported success."
-        ;;
-    esac
+    echo "  *** ROOTFS VERIFICATION BYPASSED VIA PARTITION-ID CONFUSION ***"
+    echo "  U-Boot verified the rootfs it selected BY NAME ('rootfs'), and that"
+    echo "  check passed on the GOLDEN partition. Yet THIS partition is running:"
+    echo "  Linux re-resolved the root identifier (PARTUUID/PARTLABEL) to a"
+    echo "  different, attacker-controlled partition. The verified partition and"
+    echo "  the mounted partition are not the same one."
     ;;
   *GOOD*)
     echo "  Golden rootfs is running — the intended partition was mounted this boot."

@@ -6,13 +6,13 @@
 SHELL        := /bin/bash
 IMG          := partguid-lab:latest
 PWD          := $(shell pwd)
-STRATEGY     ?= dup-partuuid
+STRATEGY     ?= partuuid
 
 # Run a command inside the build container with the repo bind-mounted at /work.
 DRUN         := docker run --rm -t -v "$(PWD)":/work -w /work $(IMG)
 
 .PHONY: help env uboot kernel busybox rootfs image run demo all clean distclean \
-        experiments exp-hash exp-fit exp-dv fit verity mldisk
+        experiments partuuid partlabel verity mldisk
 
 help:
 	@echo "Targets:"
@@ -24,12 +24,10 @@ help:
 	@echo "  rootfs    assemble good+evil ext4 rootfs      -> out/rootfs/*.img"
 	@echo "  image     craft GPT disk (STRATEGY=$(STRATEGY)) -> out/image/disk.img"
 	@echo "  run       boot out/image/disk.img on host QEMU"
-	@echo "  experiments  full 19-row matrix (Hash / FIT / DM-VERITY), asserts each"
-	@echo "  exp-hash     only the Hash group (hash-verify, Stage-A U-Boot)"
-	@echo "  exp-fit      only the FIT group (RSA-2048 signed boot)"
-	@echo "  exp-dv       only the DM-VERITY group (mitigation)"
-	@echo "  fit       one scenario: REAL RSA-signed FIT verified boot, still bypassed"
-	@echo "  verity    one scenario: dm-verity mitigation (evil blocked + good verified)"
+	@echo "  experiments  full matrix: BASELINE + PARTUUID + PARTLABEL + DM-VERITY, asserts each"
+	@echo "  partuuid     BASELINE + PARTUUID group only"
+	@echo "  partlabel    BASELINE + PARTLABEL group only"
+	@echo "  verity    dm-verity mitigation on its own (good + evil, single- and multi-disk)"
 	@echo "  mldisk    one scenario: multi-disk PARTLABEL bypass"
 	@echo "  demo      all + image + run"
 	@echo "  clean     remove out/ artifacts (keep vendored sources)"
@@ -63,18 +61,11 @@ run:
 experiments:
 	scripts/experiments.sh
 
-# single group of the matrix (quicker than the full run)
-exp-hash:
-	scripts/experiments.sh ub
-exp-fit:
-	scripts/experiments.sh fit
-exp-dv:
-	scripts/experiments.sh dv
-
-# end-to-end REAL verified boot: RSA-2048 signed FIT verified by U-Boot, still bypassed
-# (fit-demo.sh builds the FIT-enforcing U-Boot inside the container if needed)
-fit:
-	scripts/fit-demo.sh
+# one confusion group (each also runs the shared BASELINE rows first)
+partuuid:
+	scripts/experiments.sh partuuid
+partlabel:
+	scripts/experiments.sh partlabel
 
 # MITIGATION: dm-verity binds root to a hash, rejecting the confused partition
 verity:

@@ -20,8 +20,8 @@ export ARCH=arm
 
 make qemu_arm64_defconfig
 
-# Stage A: stock config is enough (distro boot scans partitions for /boot.scr).
-# Stage B will append a config fragment enabling CONFIG_FIT_SIGNATURE here.
+# stock config already scans partitions for /boot.scr; the fragment adds the extra
+# commands the boot script needs (hash verify of the rootfs, part lookup by name).
 if [ -f ../../configs/uboot.fragment ]; then
     ./scripts/kconfig/merge_config.sh -m .config ../../configs/uboot.fragment
     make olddefconfig

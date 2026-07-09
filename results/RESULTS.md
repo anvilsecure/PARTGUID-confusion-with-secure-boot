@@ -1,21 +1,22 @@
 # Results
 
-Reproduce with `make experiments` — a self-asserting **19-row** matrix grouped by
-verification mechanism (QEMU enumeration is deterministic so each row is single-shot).
-Run one group at a time with `scripts/experiments.sh ub|fit|dv`.
+Reproduce with `make experiments` — a self-asserting matrix: the confusion groups (by
+**identifier type**) plus the DM-VERITY mitigation group (QEMU enumeration is deterministic
+so each row is single-shot). Run one confusion group with `make partuuid` or `make partlabel`
+(each also runs the shared BASELINE rows).
 
-* **Hash** (hash verify) — 8 rows. *single disk:* good-only (GOOD) · evil-only
-  (refused) · PARTUUID (EVIL) · PARTLABEL (U-Boot catches → no boot). *multi disk
-  (device + attacker USB):* internal-only (GOOD) · internal-evil (refused) · PARTUUID
-  (EVIL) · PARTLABEL (EVIL).
-* **FIT** (real RSA-2048 kernel + rootfs hash) — the same 8, each also showing
-  `rsa2048:dev+ OK`: a signed kernel still doesn't protect the rootfs.
-* **DM-VERITY** (mitigation) — 3 rows: good passes · PARTUUID blocked (panic) ·
-  PARTLABEL multi-disk blocked (panic).
-
-The single-disk PARTLABEL row is kept precisely to show the bypass **fails** there
-(both resolvers pick the first `rootfs`, so U-Boot verifies the same partition Linux
-would mount and catches the evil copy). Multi-disk PARTLABEL is where it bypasses.
+* **BASELINE** — 4 rows. *single disk:* good-only (GOOD) · evil-only (refused). *multi disk
+  (device + attacker USB):* internal-only (GOOD) · internal-evil (refused). These show the
+  verification genuinely accepts good and rejects evil, so the bypass rows matter.
+* **PARTUUID** — 2 rows: single-disk (EVIL) · multi-disk (EVIL). Exploitable even on one
+  disk.
+* **PARTLABEL** — 2 rows: single-disk (U-Boot catches → no boot) · multi-disk (EVIL). The
+  single-disk row is kept precisely to show the bypass **fails** there (both resolvers pick
+  the first `rootfs`, so U-Boot verifies the same partition Linux would mount and catches
+  the evil copy); the two-disk case is where PARTLABEL bypasses.
+* **DM-VERITY** (mitigation) — 3 rows: good passes; the confused partition is blocked with a
+  `panic` (single-disk PARTUUID, multi-disk PARTLABEL). Also runnable on its own with
+  `make verity`.
 
 **Multi-disk model = router + attacker USB (realistic):** the device's internal media
 holds the boot slot (kernel) and the golden rootfs and boots on its own; the attacker
@@ -26,7 +27,6 @@ baselines boot the internal disk alone (GOOD / U-Boot-rejects).
 
 Logs in `results/`: `boot-{good,evil}-only.log`, `boot-partuuid.log`,
 `boot-partlabel.log`, `boot-mldisk-{good-only,evil-only,partuuid,partlabel}.log`,
-`boot-fit-*` (same 8, FIT), `boot-fit-tampered.log` (negative control),
 `boot-verity{,-good,-mldisk}.log`.
 Env: U-Boot 2024.07 (`qemu_arm64`), Linux 6.6, busybox 1.36.1, QEMU `-M virt`, virtio-blk.
 
@@ -137,56 +137,16 @@ boot chain.
 Summary: PARTUUID is exploitable **single-disk** *and* across two drives; PARTLABEL needs
 the two-disk case (single-disk PARTLABEL is caught).
 
-## `fit` — REAL RSA verified boot, still bypassed  ([boot-fit-partuuid.log](boot-fit-partuuid.log))
+## Why signing the kernel isn't the fix
 
-Same `partuuid` disk, but U-Boot now performs a **genuine RSA-2048 FIT signature
-check** on the kernel (key in U-Boot's control DTB), on top of the rootfs hash check.
-Built with `scripts/build-uboot-fitverify.sh` + `scripts/sign-fit.sh`; booted with
-`out/uboot-fit/u-boot.bin` and `-dtb out/stage-b/keyed.dtb`.
-
-```
- U-Boot: ROOTFS(name=rootfs) VERIFIED OK (golden partition)     (hash check, good = p3)
- ## Loading kernel from FIT Image at 44000000 ...
-    Verifying Hash Integrity ... sha256,rsa2048:dev+ OK          (REAL RSA-2048 signature)
- ...
- EXT4-fs (vda1): mounted filesystem baea5211-...f7d2            (= evil.img)
- #  ROOTFS IDENTITY : EVIL
- *** ROOTFS VERIFICATION BYPASSED VIA PARTITION-ID CONFUSION ***
-```
-
-The kernel is **cryptographically signed and verified** (RSA-2048), and the rootfs
-U-Boot inspects by name passes its hash check — yet Linux still runs the unsigned evil
-partition via the duplicated PARTUUID. This is the bug against *real* verified boot:
-signing the kernel does not protect the rootfs when the rootfs is located by a
-re-resolvable, non-unique identifier.
-
-### Negative control — verification is genuinely enforced  ([boot-fit-tampered.log](boot-fit-tampered.log))
-
-Flip one byte in the kernel payload of the signed `kernel.itb` and boot:
-
-```
-    Verifying Hash Integrity ... sha256 error!
- Bad hash value for 'hash-1' hash node in 'kernel' image node
- Bad Data Hash
- ERROR -2: can't get kernel image!
-```
-
-U-Boot **refuses to boot** the tampered FIT (no kernel, no EVIL). So the `+ OK` above
-is a real cryptographic verdict, not a cosmetic print — the bypass defeats verification
-that is actually being enforced.
-
-### qemu DTB note (why `keyed.dtb` is built from `live.dtb`)
-
-FIT signature needs the pubkey in U-Boot's control FDT. On qemu that FDT comes from
-QEMU, so we pass a key-bearing copy via `-dtb` (keeping `OF_BOARD` on, so the kernel
-boots). Crucially, `qemu-system-aarch64 -machine dumpdtb` emits a **1 MiB** blob that
-does **not** boot the kernel when fed back via `-dtb`; the DTB QEMU actually hands the
-payload at boot is ~**8 KiB**. The lab extracts that live 8 KiB DTB from a working boot
-(`/sys/firmware/fdt`, saved by init) and stamps the key into it (`out/stage-b/live.dtb`
-→ `keyed.dtb`). Using the dumped blob leaves the kernel silent after `Starting kernel`.
-
-(An earlier variant that embedded the key by disabling `OF_BOARD` was dropped — it lands
-on the same non-booting embedded DTB.)
+The bypass is orthogonal to the strength of the boot-chain crypto. Even with a genuinely
+signed kernel (e.g. an RSA-signed FIT), U-Boot can only verify what it **loads into RAM** —
+the kernel, the DTB, a ramdisk. It never loads the block-device rootfs; Linux mounts that
+later by re-resolving `root=`. So U-Boot verifies the golden rootfs it found *by name*, the
+signed kernel boots fine, and Linux still mounts the evil partition it resolved *by
+identifier*. Signing the kernel raises the bar for tampering with the *kernel* — not for
+the rootfs the identifier points at. The real fix binds rootfs integrity to the mounted
+content, below.
 
 ## Mitigation — dm-verity blocks the confusion  (`make verity`, [boot-verity.log](boot-verity.log))
 

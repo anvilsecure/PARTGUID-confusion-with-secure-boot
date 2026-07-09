@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# dm-verity MITIGATION demo. Two runs, symmetric to the FIT positive/negative controls:
+# dm-verity MITIGATION demo — the correct fix (binds root integrity to a hash):
 #   evil : same PARTUUID confusion -> verity data resolves to evil -> PANIC, evil never runs
 #   good : no collision -> verity data resolves to golden -> verity PASSES, golden runs (ro)
+#   multi-disk : attacker USB (evil) vs internal golden hash tree -> PANIC across disks too
 # Run on the HOST (container crafts the disk, host QEMU boots it).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -32,6 +33,19 @@ run_one evil results/boot-verity.log \
 run_one good results/boot-verity-good.log \
     'ROOTFS IDENTITY : GOOD' \
     'dm-verity device corrupted'
+
+# multi-disk: attacker USB (evil) vs the internal golden hash tree -> panic across disks too
+echo; echo "=================== verity mode: multi-disk ==================="
+pkill -9 -f qemu-system-aarch64 2>/dev/null || true
+"${DRUN[@]}" scripts/make-verity-multidisk.sh
+DISK2=out/image/disk2.img TIMEOUT=90 bash scripts/run-qemu.sh --capture
+cp out/boot.log results/boot-verity-mldisk.log
+if grep -qE 'dm-verity device corrupted|verity: .*(is corrupted|reached maximum errors)' results/boot-verity-mldisk.log \
+   && ! grep -qE 'ROOTFS IDENTITY : EVIL' results/boot-verity-mldisk.log; then
+    echo "[verity:multi-disk] OK"
+else
+    echo "[verity:multi-disk] FAIL"; tail -15 results/boot-verity-mldisk.log; rc=1
+fi
 
 echo
 if [ "$rc" = 0 ]; then
