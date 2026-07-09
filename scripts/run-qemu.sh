@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# UBOOT overridable so Stage B can boot out/uboot-stageb/u-boot.bin
+# UBOOT overridable so the FIT-verify build (out/uboot-fit/u-boot.bin) can be booted.
 UBOOT="${UBOOT:-out/uboot/u-boot.bin}"
 DISK=out/image/disk.img
 LOG=out/boot.log
@@ -41,45 +41,23 @@ if [ -n "${DISK2:-}" ]; then
     echo "[run] second disk (virtio 1 / vdb): $DISK2"
 fi
 
-# Optional USB disk (models SD-vs-USB heterogeneous transports, like a Raspberry Pi).
-# Linux sees it as /dev/sd*; U-Boot as `usb 0` after `usb start`.
-if [ -n "${USBDISK:-}" ]; then
-    [ -f "$USBDISK" ] || { echo "missing USBDISK=$USBDISK"; exit 1; }
-    QEMU+=(-device qemu-xhci,id=xhci
-           -drive if=none,file="$USBDISK",format=raw,id=usb0
-           -device usb-storage,bus=xhci.0,drive=usb0)
-    echo "[run] USB disk (Linux /dev/sda): $USBDISK"
-fi
-
 if [ "${1:-}" = "--capture" ]; then
-    # REPEAT=n + WANT=<regex>: boot up to n times, stop as soon as the log matches WANT.
-    # For non-deterministic setups (e.g. USB async probe order) this catches the run
-    # where U-Boot and Linux diverge. Default REPEAT=1 (single boot, no early-out).
-    TRIES="${REPEAT:-1}"; WANT="${WANT:-}"
-    echo "[run] capture mode: <=${TIMEOUT}s x${TRIES}, log -> $LOG  (guest auto-poweroff)"
-    hdr(){
-        echo "# partguid-confusion-lab capture (try $1/$TRIES)"
+    echo "[run] capture mode: <=${TIMEOUT}s, log -> $LOG  (guest auto-poweroff)"
+    {
+        echo "# partguid-confusion-lab capture"
         echo "# qemu      : $(qemu-system-aarch64 --version | head -1)"
         echo "# u-boot.bin: sha256 $(shasum -a 256 "$UBOOT" | awk '{print $1}')"
         echo "# disk.img  : sha256 $(shasum -a 256 "$DISK"  | awk '{print $1}')"
         [ -f out/image/EXPECT ] && echo "# expect    : $(cat out/image/EXPECT) rootfs mounted"
         echo "# ----------------------------------------------------------------"
-    }
-    matched=0
-    for try in $(seq 1 "$TRIES"); do
-        hdr "$try" > "$LOG"
-        set +e
-        # perl alarm gives a hard timeout without GNU timeout(1) (absent on macOS).
-        perl -e 'alarm shift @ARGV; exec @ARGV or die $!' "$TIMEOUT" \
-            "${QEMU[@]}" </dev/null 2>&1 | tee -a "$LOG"
-        rc=${PIPESTATUS[0]}
-        set -e
-        echo "[run] try $try: qemu exited (rc=$rc)"
-        if [ -n "$WANT" ] && grep -qE "$WANT" "$LOG"; then
-            echo "[run] matched WANT on try $try"; matched=1; break
-        fi
-    done
-    [ -n "$WANT" ] && [ "$matched" = 0 ] && echo "[run] WANT never matched in $TRIES tries"
+    } > "$LOG"
+    set +e
+    # perl alarm gives a hard timeout without GNU timeout(1) (absent on macOS).
+    perl -e 'alarm shift @ARGV; exec @ARGV or die $!' "$TIMEOUT" \
+        "${QEMU[@]}" </dev/null 2>&1 | tee -a "$LOG"
+    rc=${PIPESTATUS[0]}
+    set -e
+    echo "[run] qemu exited (rc=$rc)"
     exit 0
 fi
 

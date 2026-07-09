@@ -1,7 +1,7 @@
 # U-Boot boot script template (compiled to boot.scr by make-image.sh).
 # Placeholders @@...@@ are substituted per scenario before mkimage.
 #
-# Models the vendor bootcmd from RAT #116:
+# Models a typical vendor bootcmd:
 #   load_kernel && verify_image && load_rootfs && verify_image && setup_bootargs && boot
 #
 # The crux: U-Boot finds and VERIFIES the rootfs BY NAME (partlabel '@@ROOTNAME@@'),

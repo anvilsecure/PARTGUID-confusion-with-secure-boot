@@ -42,7 +42,7 @@ Env: U-Boot 2024.07 (`qemu_arm64`), Linux 6.6, busybox 1.36.1, QEMU `-M virt`, v
 The bypass phases below matter *because* of these baselines: verification genuinely
 accepts good and rejects evil, yet the confusion makes Linux mount evil anyway.
 
-## Model (matches RAT #116)
+## Model
 
 U-Boot's boot script:
 1. loads the kernel from a fixed boot slot,
@@ -111,7 +111,7 @@ Realistic setup — a device with internal media plus an inserted attacker USB s
   QEMU hd0 → U-Boot virtio 1 / Linux vdb. Boots on its own.
 - `disk2.img` = **attacker USB**: p1 evil rootfs, **no boot slot**. QEMU hd1 → U-Boot
   virtio 0 / Linux vda. Both partitions labelled `rootfs` (PARTLABEL case) or sharing
-  the same PARTUUID `1111…5555` (PARTUUID case — the issue's "duplicate PARTUUID on
+  the same PARTUUID `1111…5555` (PARTUUID case — the classic "duplicate PARTUUID on
   another drive connected to the same system").
 
 U-Boot's bootcmd scans the disks for `boot.scr`: the USB (virtio 0) has no boot slot, so
@@ -185,9 +185,8 @@ payload at boot is ~**8 KiB**. The lab extracts that live 8 KiB DTB from a worki
 (`/sys/firmware/fdt`, saved by init) and stamps the key into it (`out/stage-b/live.dtb`
 → `keyed.dtb`). Using the dumped blob leaves the kernel silent after `Starting kernel`.
 
-An earlier variant embedded the key by disabling `OF_BOARD`
-(`scripts/build-uboot-stageb.sh`) — kept for reference but off the default path, since
-disabling `OF_BOARD` also lands on the non-booting embedded DTB.
+(An earlier variant that embedded the key by disabling `OF_BOARD` was dropped — it lands
+on the same non-booting embedded DTB.)
 
 ## Mitigation — dm-verity blocks the confusion  (`make verity`, [boot-verity.log](boot-verity.log))
 
@@ -220,6 +219,6 @@ rootfs never ran (no `ROOTFS IDENTITY : EVIL` in the log). Even though Linux sti
 resolved the duplicated PARTUUID to the attacker partition, integrity was bound to a
 hash, so the wrong partition is rejected.
 
-Takeaway (matches the #116 mitigation notes): sign/verify the kernel *and* protect the
+Takeaway: sign/verify the kernel *and* protect the
 rootfs with dm-verity whose root hash is inside the signed boot artifacts — do not
 trust a rootfs located by a duplicable PARTUUID/PARTLABEL.

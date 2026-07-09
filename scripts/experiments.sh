@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full RAT #116 matrix, grouped by verification mechanism. Container crafts artifacts;
+# Full PARTUUID/PARTLABEL confusion matrix, grouped by verification mechanism. Container crafts artifacts;
 # host QEMU boots them. Each row asserts on its captured log (results/boot-*.log).
 # QEMU enumeration is deterministic here, so every row is single-shot (no REPEAT).
 #

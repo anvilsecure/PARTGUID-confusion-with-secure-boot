@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Multi-disk PARTLABEL divergence demo. Run on the HOST.
-# U-Boot verifies 'rootfs' on the eMMC (virtio 1 / vdb); Linux resolves
-# root=PARTLABEL=rootfs to the attacker's SD (vda, enumerated first) -> EVIL runs.
+# U-Boot verifies 'rootfs' on the internal media (virtio 1 / vdb); Linux resolves
+# root=PARTLABEL=rootfs to the attacker disk (vda, enumerated first) -> EVIL runs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -11,15 +11,12 @@ LOG="results/boot-mldisk.log"; [ "$MODE" = partuuid ] && LOG="results/boot-mldis
 pkill -9 -f qemu-system-aarch64 2>/dev/null || true
 
 "${DRUN[@]}" scripts/make-multidisk.sh "$MODE"
-echo "[mldisk] booting two disks (vda=attacker, vdb=golden), mode=$MODE, REPEAT=${REPEAT:-1}..."
-# WANT lets REPEAT=n retry until the evil mount appears (the "pass if once" method,
-# useful on setups where enumeration order is a race — see docs/raspberry-pi-repro.md).
-DISK2=out/image/disk2.img TIMEOUT=90 WANT='ROOTFS IDENTITY : EVIL' \
-    bash scripts/run-qemu.sh --capture
+echo "[mldisk] booting two disks (vda=attacker, vdb=internal/golden), mode=$MODE..."
+DISK2=out/image/disk2.img TIMEOUT=90 bash scripts/run-qemu.sh --capture
 cp out/boot.log "$LOG"
 
-if grep -qE 'eMMC.*VERIFIED OK' "$LOG" && grep -qE 'ROOTFS IDENTITY : EVIL' "$LOG"; then
-    echo "[mldisk] OK ($MODE) — U-Boot verified the golden disk (virtio 1 / vdb), but Linux"
+if grep -qE 'VERIFIED OK' "$LOG" && grep -qE 'ROOTFS IDENTITY : EVIL' "$LOG"; then
+    echo "[mldisk] OK ($MODE) — U-Boot verified the internal disk (virtio 1 / vdb), but Linux"
     echo "         mounted the attacker disk (vda) via $MODE. Multi-disk divergence."
 else
     echo "[mldisk] FAIL ($MODE) — expected golden verified AND evil (vda) mounted"

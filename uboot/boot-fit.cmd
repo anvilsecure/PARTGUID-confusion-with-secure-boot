@@ -1,5 +1,5 @@
 # FIT-verify boot script template (compiled to boot.scr by make-image.sh STAGE=fit).
-# Combines BOTH verification steps from the #116 model:
+# Combines BOTH verification steps of the modelled vendor boot flow:
 #   - verify the rootfs U-Boot finds BY NAME '@@ROOTNAME@@' (sha256 of a marker)
 #   - boot a REAL RSA-signed kernel FIT (U-Boot enforces the signature via the key in
 #     QEMU's control DTB, injected with -dtb)

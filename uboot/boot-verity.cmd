@@ -2,7 +2,7 @@
 # Placeholders @@...@@ substituted at build time.
 #
 # The rootfs is mapped through dm-verity via the kernel `dm-mod.create=` cmdline
-# (CONFIG_DM_INIT). The verity DATA device is located by @@VDATA@@ (so the #116
+# (CONFIG_DM_INIT). The verity DATA device is located by @@VDATA@@ (so the PARTUUID/PARTLABEL
 # confusion still selects the attacker partition), but the verity ROOT HASH is the
 # fixed hash of the GOLDEN rootfs. dm-verity hashes the attacker blocks, finds they do
 # not match the golden root hash, and PANICS — the evil rootfs never runs. When the

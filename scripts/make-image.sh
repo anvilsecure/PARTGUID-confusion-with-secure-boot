@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Craft the GPT disk for a chosen confusion scenario (RAT #116).
+# Craft the GPT disk for a chosen confusion scenario.
 # Runs inside the build container. Output: out/image/disk.img (+ out/image/EXPECT)
 #
 # Usage: make-image.sh [scenario]

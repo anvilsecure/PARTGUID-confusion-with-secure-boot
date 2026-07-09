@@ -1,7 +1,6 @@
 # partguid-confusion-lab
 
-A reproducible QEMU harness for **PARTGUID / PARTUUID confusion under secure boot**
-(anvilventures/RAT issue #116).
+A reproducible QEMU harness for **PARTGUID / PARTUUID confusion under secure boot**.
 
 ## The bug class in one paragraph
 
@@ -28,7 +27,7 @@ us characterize *which* GPT shapes are vulnerable — see
 [results/RESULTS.md](results/RESULTS.md). The mechanism at a glance:
 [docs/mechanism.png](docs/mechanism.png).
 
-The boot flow models the vendor `bootcmd` from the issue: U-Boot loads the kernel,
+The boot flow models a typical vendor `bootcmd`: U-Boot loads the kernel,
 locates the rootfs **by name** (`#rootfs`) and **verifies** it (a `sha256` check
 standing in for a signature), then boots Linux with `root=<spec>`. Linux re-resolves
 `<spec>` on its own and can mount a *different* partition.
@@ -116,20 +115,13 @@ Single-disk PARTLABEL (row 4) can't bypass: both resolvers pick the first `rootf
 U-Boot verifies exactly what Linux would mount and catches the evil copy. PARTUUID is
 exploitable even on a single disk (rows 3); PARTLABEL needs the two-disk case (row 8).
 
-### QEMU determinism, `REPEAT`, and real hardware
+### QEMU determinism
 
 On `-M virt` the multi-disk demos are **deterministic**: U-Boot and Linux enumerate the
 transports in the same order, so the divergence is a *policy* one (fixed-slot verify vs
-first-match root) and passes every run. Genuine *enumeration-order* disagreement (the
-issue's "U-Boot … different search orders than Linux") is a real-hardware phenomenon.
-
-* `REPEAT=n make mldisk` boots up to `n` times and stops at the first evil mount
-  (`WANT` regex) — the "pass if it happens once" method. In QEMU it matches on try 1
-  (deterministic); on hardware with a USB-vs-SD probe race it catches the divergent
-  boot. `run-qemu.sh` also takes `USBDISK=<img>` to attach a USB drive (Linux `/dev/sda`),
-  the software analogue of SD-vs-USB.
-* For the authentic hardware reproduction (Raspberry Pi, SD golden vs USB attacker),
-  see [docs/raspberry-pi-repro.md](docs/raspberry-pi-repro.md).
+first-match root) and reproduces on every run. On real hardware the same bug class can
+also arise from genuine *enumeration-order* disagreement between the bootloader and Linux
+(different probe/search orders across transports); this lab pins the stable policy variant.
 
 Boot logs are committed under `results/` with a `sha256`/QEMU-version provenance header.
 
@@ -139,7 +131,7 @@ Two levels, both showing the same bypass:
 
 * **Default (`make experiments`):** U-Boot's `verify_image` is modelled with
   `hash sha256` over a marker in the rootfs it selects **by name** — a stand-in for a
-  signature check. Fast, and the #116 confusion is about *which partition* is
+  signature check. Fast, and the confusion is about *which partition* is
   selected, not the crypto.
 * **Real crypto (`make fit`):** U-Boot performs a **genuine RSA-2048 FIT signature
   check** on the kernel (key in its control DTB) on top of the rootfs hash check, and
@@ -150,7 +142,7 @@ Two levels, both showing the same bypass:
   qemu detail: the pubkey must live in U-Boot's control FDT, supplied via `-dtb`.
   `qemu ... -machine dumpdtb` emits a 1 MiB blob that won't boot the kernel; the lab
   instead extracts the ~8 KiB DTB QEMU really uses (from `/sys/firmware/fdt` on a
-  working boot) and keys that. `scripts/build-uboot-stageb.sh` (embed key by disabling
-  `OF_BOARD`) is kept for reference but off the default path.
+  working boot) and keys that. (An earlier variant that embedded the key by disabling
+  `OF_BOARD` was dropped — it lands on the same non-booting embedded DTB.)
 
 See `docs/ANALYSIS.md` for the detailed mechanism writeup.
