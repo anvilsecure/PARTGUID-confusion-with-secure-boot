@@ -1,12 +1,12 @@
 # partguid-confusion-lab capture
 # qemu      : QEMU emulator version 11.0.1
-# u-boot.bin: sha256 09ca9a9e9ab2b6448a657c37b4389f35868f36b1a2441bb2f34c9fdced6ef7c3
-# disk.img  : sha256 72e382a03513a7e9dc48ece42d428ae6f5b6d60b6155b3bfd21207d35a271d33
+# u-boot.bin: sha256 2c640d85aca7985399dee53748dd50712c4907ca7b3066391082ce5ab9611d84
+# disk.img  : sha256 b5b24c7e42e3c27d547e4cfdf32d3db07cc517d626b8793e4782e5c57d2f1f33
 # expect    : TAMPER-REFUSED rootfs mounted
 # ----------------------------------------------------------------
 
 
-U-Boot 2024.07-dirty (Jul 09 2026 - 16:43:02 +0000)
+U-Boot 2024.07-dirty (Jul 09 2026 - 16:54:25 +0000)
 
 DRAM:  512 MiB
 Core:  51 devices, 14 uclasses, devicetree: board
@@ -22,13 +22,13 @@ Net:   eth0: virtio-net#32
 starting USB...
 No USB controllers found
 Hit any key to stop autoboot:  2  1  0 
-41801338 bytes read in 77 ms (517.7 MiB/s)
+41801338 bytes read in 74 ms (538.7 MiB/s)
 ## Loading kernel from FIT Image at 44000000 ...
    Using 'conf-1' configuration
    Verifying Hash Integrity ... sha256,rsa2048:dev+ OK
    Trying 'kernel' kernel subimage
      Description:  unavailable
-     Created:      2026-07-09  16:43:42 UTC
+     Created:      2026-07-09  16:55:04 UTC
      Type:         Kernel Image
      Compression:  uncompressed
      Data Start:   0x440000c0

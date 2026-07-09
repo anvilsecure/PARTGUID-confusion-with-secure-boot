@@ -1,7 +1,7 @@
 # partguid-confusion-lab capture
 # qemu      : QEMU emulator version 11.0.1
 # u-boot.bin: sha256 63d31e9d834780db3363105cbd551ca52ab6b99829564235853d8e880f0c9e4a
-# disk.img  : sha256 bdc2b19856a9ca6cdcb0d59ac792982fc8305487ec44209e71db65e418f5daf6
+# disk.img  : sha256 fff7aa5a18ccb1d2b037b39a9ec3a48f9b4a7b354caa21440bff6ea128b07a5e
 # expect    : VERIFY-FAIL rootfs mounted
 # ----------------------------------------------------------------
 
@@ -36,15 +36,15 @@ Part	Start LBA	End LBA		Name
   1	0x00000800	0x000187ff	"rootfs"
 	attrs:	0x0000000000000000
 	type:	0fc63daf-8483-4772-8e79-3d69d8477de4
-	guid:	15791d56-ab33-4849-a6f5-f48f3aa6f16b
+	guid:	05d3c084-1bfb-4736-b654-80616e97a3d3
   2	0x00018800	0x000587ff	"boot"
 	attrs:	0x0000000000000000
 	type:	0fc63daf-8483-4772-8e79-3d69d8477de4
-	guid:	91351777-6160-4ae2-af0c-86dbbbd3abf4
+	guid:	dea87150-e36f-432d-976b-d6c08bfa1139
  --- load_kernel (from boot slot virtio 0:2) ---
-41792000 bytes read in 8 ms (4.9 GiB/s)
+41792000 bytes read in 10 ms (3.9 GiB/s)
  --- load_rootfs + verify_image: locate rootfs BY NAME rootfs on virtio 0 ---
-66 bytes read in 1 ms (64.5 KiB/s)
+66 bytes read in 0 ms
 sha256 for 46000000 ... 46000041 ==> 4d823152d6c5e2b95c45334e43fbc1bece21de5bacf7bdc685328aacb69e4633
  U-Boot: rootfs(name=rootfs, virtio 0) marker sha256 = 4d823152d6c5e2b95c45334e43fbc1bece21de5bacf7bdc685328aacb69e4633
  U-Boot: ROOTFS VERIFICATION FAILED -> refusing to boot

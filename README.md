@@ -154,4 +154,15 @@ is refused** (signature enforced). Both holes are shut — a colliding rootfs is
 verity, and rewriting the boot artifact to weaken verity breaks the signature. Mechanism of
 the fix at a glance: [docs/solution.jpg](docs/solution.jpg). See `results/RESULTS.md`.
 
+## Boot scripts
+
+The exact U-Boot boot logic for each path, annotated (what U-Boot loads, verifies, and how
+`root=` is set):
+
+* [docs/hash-verify-boot.md](docs/hash-verify-boot.md) — the **BASELINE / PARTUUID / PARTLABEL**
+  demos: `uboot/boot.cmd` verifies the rootfs by name (hash) and hands Linux a re-resolvable
+  `root=`.
+* [docs/signed-verity-boot.md](docs/signed-verity-boot.md) — the **mitigation**: no `boot.scr`;
+  the verity root hash rides in an RSA-signed FIT that U-Boot `bootm`s directly.
+
 See `docs/ANALYSIS.md` for the detailed mechanism writeup.
