@@ -14,9 +14,9 @@ so each row is single-shot). Run one confusion group with `make partuuid` or `ma
   single-disk row is kept precisely to show the bypass **fails** there (both resolvers pick
   the first `rootfs`, so U-Boot verifies the same partition Linux would mount and catches
   the evil copy); the two-disk case is where PARTLABEL bypasses.
-* **DM-VERITY** (mitigation) — 3 rows: good passes; the confused partition is blocked with a
-  `panic` (single-disk PARTUUID, multi-disk PARTLABEL). Also runnable on its own with
-  `make verity`.
+* **DM-VERITY (signed FIT)** (mitigation) — 3 rows: with the verity root hash inside an
+  RSA-signed FIT — good boots (`rsa2048:dev+ OK`), the confused/evil partition **panics**, and a
+  tampered signed FIT is **refused**. Also runnable on its own with `make verity-signed`.
 
 **Multi-disk model = router + attacker USB (realistic):** the device's internal media
 holds the boot slot (kernel) and the golden rootfs and boots on its own; the attacker
@@ -27,7 +27,7 @@ baselines boot the internal disk alone (GOOD / U-Boot-rejects).
 
 Logs in `results/`: `boot-{good,evil}-only.log`, `boot-partuuid.log`,
 `boot-partlabel.log`, `boot-mldisk-{good-only,evil-only,partuuid,partlabel}.log`,
-`boot-verity{,-good,-mldisk}.log`.
+`boot-vsigned-{good,evil,tamper}.log`.
 Env: U-Boot 2024.07 (`qemu_arm64`), Linux 6.6, busybox 1.36.1, QEMU `-M virt`, virtio-blk.
 
 ## Baselines (phases 1–2) — the verification is real
@@ -148,16 +148,16 @@ identifier*. Signing the kernel raises the bar for tampering with the *kernel* �
 the rootfs the identifier points at. The real fix binds rootfs integrity to the mounted
 content, below.
 
-## Mitigation — dm-verity blocks the confusion  (`make verity`, [boot-verity.log](boot-verity.log))
+## Mitigation — dm-verity with the root hash in a signed FIT  (`make verity-signed`)
 
-The correct fix binds root integrity to a **cryptographic hash**, not to a
-re-resolvable partition identifier. The kernel maps root through dm-verity via the
-`dm-mod.create=` command line (no initramfs); the verity **data device is still located
-by `PARTUUID`** (so the confusion still selects the evil partition), but the verity
-**root hash is the hash of the GOLDEN rootfs**.
+The correct fix binds root integrity to a **cryptographic hash**, not to a re-resolvable
+partition identifier — and anchors that hash in a **signed** boot artifact so it cannot be
+weakened. The kernel maps root through dm-verity via the `dm-mod.create=` command line (no
+initramfs); the verity **data device is still located by `PARTUUID`** (so the confusion still
+selects the evil partition), but the verity **root hash is the hash of the GOLDEN rootfs**.
 
-Kernel is built with `CONFIG_BLK_DEV_DM=y CONFIG_DM_VERITY=y CONFIG_DM_INIT=y`. The
-hash tree is built over `good.img` with `veritysetup`; cmdline:
+Kernel built with `CONFIG_BLK_DEV_DM=y CONFIG_DM_VERITY=y CONFIG_DM_INIT=y`; the hash tree is
+built over `good.img` with `veritysetup`. cmdline:
 
 ```
 root=/dev/dm-0 ro rootwait ... dm-mod.create="vroot,,0,ro,0 65536 verity 1
@@ -165,33 +165,11 @@ root=/dev/dm-0 ro rootwait ... dm-mod.create="vroot,,0,ro,0 65536 verity 1
   1 panic_on_corruption"
 ```
 
-Result:
-
-```
- device-mapper: ioctl: dm-0 (vroot) is ready
- device-mapper: verity: 254:1: data block 0 is corrupted     (254:1 = vda1 = evil)
- Kernel panic - not syncing: dm-verity device corrupted
-```
-
-dm-verity opened the evil partition (vda1) as the verity data device, hashed its first
-block, found it did **not** match the golden root hash, and **panicked** — the evil
-rootfs never ran (no `ROOTFS IDENTITY : EVIL` in the log). Even though Linux still
-resolved the duplicated PARTUUID to the attacker partition, integrity was bound to a
-hash, so the wrong partition is rejected.
-
-Takeaway: sign/verify the kernel *and* protect the rootfs with dm-verity whose root hash
-is inside the signed boot artifacts — do not trust a rootfs located by a duplicable
-PARTUUID/PARTLABEL. Plain `make verity` proves the *mechanism*, but its root hash rides in
-an unsigned `boot.scr`; the **complete solution** below anchors it in a signed FIT.
-
-## Complete solution — root hash in a signed FIT  (`make verity-signed`)
-
-`make verity` leaves one gap: the dm-verity root hash lives in `boot.scr` on a writable
-partition, so an attacker who can rewrite the disk could weaken the verity cmdline. The
-complete fix puts the verity cmdline (root hash) inside an **RSA-2048 signed FIT** and has
-U-Boot `bootm` it directly — it does not `source` a writable script, so the root hash
-cannot be substituted. Built by `scripts/make-verity-signed.sh`; U-Boot from
-`scripts/build-uboot-fitverify.sh` (CONFIG_FIT_SIGNATURE, key in the control DTB via `-dtb`).
+That cmdline (carrying the root hash) rides in the `/chosen/bootargs` of an fdt inside a FIT
+`{kernel, fdt}` signed RSA-2048 (`scripts/make-verity-signed.sh`); U-Boot
+(`scripts/build-uboot-fitverify.sh`, CONFIG_FIT_SIGNATURE, key in the control DTB via `-dtb`)
+`bootm`s it **directly** — it does not `source` a writable `boot.scr`, so an attacker cannot
+substitute a weaker cmdline: a tampered FIT breaks the signature and U-Boot refuses.
 
 Three boots, all asserted:
 

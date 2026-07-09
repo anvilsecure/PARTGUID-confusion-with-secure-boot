@@ -95,18 +95,17 @@ experiments`).
 | 4 | PARTLABEL single-disk | both resolvers pick the first `rootfs` → U-Boot **catches it → no boot** |
 | 8 | PARTLABEL multi-disk | internal (golden, boots) + attacker USB (same label) → **EVIL** |
 
-**DM-VERITY** — the mitigation (root bound to a hash via `dm-mod.create=`):
+**DM-VERITY (signed FIT)** — the mitigation: the verity root hash lives inside an RSA-signed FIT:
 
 | row | expected |
 |-----|----------|
-| verity PASSES good | genuine golden data → verity OK → **GOOD boots** |
-| verity / PARTUUID | attacker partition selected → **panic: dm-verity device corrupted** (evil blocked) |
-| verity / PARTLABEL multi-disk | attacker disk selected → **panic** (evil blocked) |
+| verity-signed good | FIT verified (`rsa2048:dev+ OK`) + verity passes golden data → **GOOD boots** |
+| verity-signed / PARTUUID | FIT verified, evil data fails the hash → **panic: dm-verity device corrupted** (evil blocked) |
+| verity-signed / tamper | one byte flipped in the signed FIT → **U-Boot refuses** (`Bad Data Hash`) |
 
 Each row's boot log is committed under `results/`. The mitigation also runs on its own with
-`make verity`, and the **complete solution** — the verity root hash anchored in an RSA-signed
-FIT — with `make verity-signed` (see below). Other standalone scenarios: `make mldisk
-[partuuid]`, or `make image STRATEGY=partuuid && make run`.
+`make verity-signed`. Other standalone scenarios: `make mldisk [partuuid]`, or `make image
+STRATEGY=partuuid && make run`.
 
 The **multi-disk** rows (5–8) model the realistic attack — an embedded device (e.g. a
 router) plus an **attacker USB stick**:
@@ -146,18 +145,13 @@ doesn't help: U-Boot can only verify what it loads into RAM, never the block-dev
 that Linux mounts later.)
 
 The correct fix binds rootfs integrity to the **content Linux actually mounts**, not to a
-re-resolvable identifier: **dm-verity** with a root hash carried in the signed boot
-artifacts. `make verity` demonstrates the mechanism — under the same PARTUUID/PARTLABEL
-collision the kernel opens the attacker partition as the verity data device, the hash of
-its blocks does not match the golden root hash, and it **panics** instead of running the
-evil rootfs.
-
-`make verity` leaves one gap, though: its root hash rides in an unsigned `boot.scr` on a
-writable partition. The **complete solution** (`make verity-signed`) closes it — the verity
-cmdline (root hash) lives inside an **RSA-2048 signed FIT** that U-Boot `bootm`s directly
-(no writable script to override it). Three asserted boots: golden **boots**, evil **panics**,
-and a **tampered signed FIT is refused**. Both holes are shut — a colliding rootfs is caught
-by verity, and rewriting the boot artifact to weaken verity breaks the signature. Mechanism
-of the fix at a glance: [docs/solution.jpg](docs/solution.jpg). See `results/RESULTS.md`.
+re-resolvable identifier: **dm-verity** with the root hash carried in a *signed* boot
+artifact. `make verity-signed` is the complete solution — the verity cmdline (root hash)
+lives inside an **RSA-2048 signed FIT** that U-Boot `bootm`s directly (no writable `boot.scr`
+to override it). Three asserted boots: under the same PARTUUID collision the golden data
+**boots**, the attacker data **panics** (verity hash mismatch), and a **tampered signed FIT
+is refused** (signature enforced). Both holes are shut — a colliding rootfs is caught by
+verity, and rewriting the boot artifact to weaken verity breaks the signature. Mechanism of
+the fix at a glance: [docs/solution.jpg](docs/solution.jpg). See `results/RESULTS.md`.
 
 See `docs/ANALYSIS.md` for the detailed mechanism writeup.

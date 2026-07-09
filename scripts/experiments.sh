@@ -41,7 +41,7 @@ echo "[exp] rootfs ground-truth UUIDs:"; "${DRUN[@]}" bash -c '
   for f in good evil; do echo "  $f.img = $(dumpe2fs -h out/rootfs/$f.img 2>/dev/null | awk -F: "/Filesystem UUID/{gsub(/ /,\"\",\$2);print \$2}")"; done' | tee results/rootfs-uuids.txt
 
 EVIL='ROOTFS IDENTITY : EVIL'; GOOD='ROOTFS IDENTITY : GOOD'; FAIL='ROOTFS VERIFICATION FAILED'
-PANIC='dm-verity device corrupted'
+PANIC='dm-verity device corrupted'; RSA='rsa2048:dev\+ OK'; BADFIT='Bad Data Hash|can.t get kernel image'
 
 ########################## BASELINE (always) ##########################
 echo; echo "########## BASELINE (verification accepts good, rejects evil) ##########"
@@ -74,15 +74,15 @@ qkill; "${DRUN[@]}" scripts/make-multidisk.sh partlabel >/dev/null; DISK2=out/im
 res pl "8. PARTLABEL multi-disk bypass (EVIL)"           results/boot-mldisk-partlabel.log "$EVIL"
 fi
 
-########################## DM-VERITY (mitigation, all only) ##########################
+########################## DM-VERITY — signed FIT (mitigation, all only) ##########################
 if [ "$GROUP" = all ]; then
-echo; echo "########## DM-VERITY (mitigation: root bound to a hash) ##########"
-qkill; "${DRUN[@]}" scripts/make-verity-image.sh good >/dev/null; cap boot-verity-good.log
-res dv "verity PASSES good (GOOD boots)"                       results/boot-verity-good.log "$GOOD" "!$PANIC"
-qkill; "${DRUN[@]}" scripts/make-verity-image.sh evil >/dev/null; cap boot-verity.log
-res dv "verity / PARTUUID: evil blocked (panic)"              results/boot-verity.log "$PANIC" "!$EVIL"
-qkill; "${DRUN[@]}" scripts/make-verity-multidisk.sh >/dev/null; DISK2=out/image/disk2.img cap boot-verity-mldisk.log
-res dv "verity / PARTLABEL multi-disk: evil blocked (panic)"  results/boot-verity-mldisk.log "$PANIC" "!$EVIL"
+echo; echo "########## DM-VERITY (root hash anchored in a signed FIT) ##########"
+# verity-signed-demo.sh builds the FIT-signing U-Boot + bootstraps the control DTB, then
+# boots good/evil/tamper (writes results/boot-vsigned-*.log). We re-assert on those logs.
+qkill; bash scripts/verity-signed-demo.sh >/dev/null 2>&1 || true
+res dv "verity-signed good (rsa OK + GOOD boots)"        results/boot-vsigned-good.log   "$GOOD" "$RSA" "!$PANIC"
+res dv "verity-signed / PARTUUID: evil blocked (panic)"  results/boot-vsigned-evil.log   "$PANIC" "$RSA" "!$EVIL"
+res dv "verity-signed / tampered FIT refused"            results/boot-vsigned-tamper.log "$BADFIT" "!ROOTFS IDENTITY :"
 fi
 
 qkill
