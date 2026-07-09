@@ -11,7 +11,8 @@ STRATEGY     ?= dup-partuuid
 # Run a command inside the build container with the repo bind-mounted at /work.
 DRUN         := docker run --rm -t -v "$(PWD)":/work -w /work $(IMG)
 
-.PHONY: help env uboot kernel busybox rootfs image run demo all clean distclean
+.PHONY: help env uboot kernel busybox rootfs image run demo all clean distclean \
+        experiments exp-hash exp-fit exp-dv fit verity mldisk
 
 help:
 	@echo "Targets:"
@@ -23,8 +24,10 @@ help:
 	@echo "  rootfs    assemble good+evil ext4 rootfs      -> out/rootfs/*.img"
 	@echo "  image     craft GPT disk (STRATEGY=$(STRATEGY)) -> out/image/disk.img"
 	@echo "  run       boot out/image/disk.img on host QEMU"
-	@echo "  experiments  full 19-row matrix (U-Boot / FIT / DM-VERITY), asserts each"
-	@echo "               (one group: scripts/experiments.sh ub|fit|dv)"
+	@echo "  experiments  full 19-row matrix (Hash / FIT / DM-VERITY), asserts each"
+	@echo "  exp-hash     only the Hash group (hash-verify, Stage-A U-Boot)"
+	@echo "  exp-fit      only the FIT group (RSA-2048 signed boot)"
+	@echo "  exp-dv       only the DM-VERITY group (mitigation)"
 	@echo "  fit       one scenario: REAL RSA-signed FIT verified boot, still bypassed"
 	@echo "  verity    one scenario: dm-verity mitigation (evil blocked + good verified)"
 	@echo "  mldisk    one scenario: multi-disk PARTLABEL bypass"
@@ -59,6 +62,14 @@ run:
 # build + boot the attack and both control scenarios; assert each mounted rootfs.
 experiments:
 	scripts/experiments.sh
+
+# single group of the matrix (quicker than the full run)
+exp-hash:
+	scripts/experiments.sh ub
+exp-fit:
+	scripts/experiments.sh fit
+exp-dv:
+	scripts/experiments.sh dv
 
 # end-to-end REAL verified boot: RSA-2048 signed FIT verified by U-Boot, still bypassed
 # (fit-demo.sh builds the FIT-enforcing U-Boot inside the container if needed)
