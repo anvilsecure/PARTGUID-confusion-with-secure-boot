@@ -1,7 +1,7 @@
 # partguid-confusion-lab capture
 # qemu      : QEMU emulator version 11.0.1
 # u-boot.bin: sha256 63d31e9d834780db3363105cbd551ca52ab6b99829564235853d8e880f0c9e4a
-# disk.img  : sha256 c1be7dd5683e9c742c6f326f7131241be072896af9e67d7adbfd6557ae4816fe
+# disk.img  : sha256 b14ba7994b83e92125f4a015b4681b7312dce43a1fee5b3612ecab11f6ded931
 # expect    : VERIFY-FAIL rootfs mounted
 # ----------------------------------------------------------------
 
@@ -22,7 +22,7 @@ Net:   eth0: virtio-net#32
 starting USB...
 No USB controllers found
 Hit any key to stop autoboot:  2  1  0 
-2094 bytes read in 2 ms (1022.5 KiB/s)
+2094 bytes read in 1 ms (2 MiB/s)
 ## Executing script at 40200000
 ==================================================================
  U-Boot booted from virtio 0 (the medium carrying the boot slot)
@@ -36,13 +36,13 @@ Part	Start LBA	End LBA		Name
   1	0x00000800	0x000187ff	"rootfs"
 	attrs:	0x0000000000000000
 	type:	0fc63daf-8483-4772-8e79-3d69d8477de4
-	guid:	219a35a6-3e91-4da2-bcf0-95e71c46e1fc
+	guid:	c36678be-d203-4a85-9f55-344d12e158e8
   2	0x00018800	0x000587ff	"boot"
 	attrs:	0x0000000000000000
 	type:	0fc63daf-8483-4772-8e79-3d69d8477de4
-	guid:	d9204641-3a8e-4c5e-8c5a-6853f495e3db
+	guid:	9711a5a7-0408-4297-b7df-20bf76630dcf
  --- load_kernel (from boot slot virtio 0:2) ---
-41792000 bytes read in 9 ms (4.3 GiB/s)
+41792000 bytes read in 10 ms (3.9 GiB/s)
  --- load_rootfs + verify_image: locate rootfs BY NAME rootfs on virtio 0 ---
 66 bytes read in 0 ms
 sha256 for 46000000 ... 46000041 ==> 4d823152d6c5e2b95c45334e43fbc1bece21de5bacf7bdc685328aacb69e4633
