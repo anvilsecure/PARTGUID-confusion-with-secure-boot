@@ -7,6 +7,8 @@ out/
 src/u-boot/
 src/linux/
 src/busybox/
-# diagram: commit the exported PNG only; the editable pptx + generator are local
+# diagrams: commit the exported PNG only; the editable pptx + generators are local
 docs/mechanism.pptx
 scripts/make-slide.py
+docs/solution.pptx
+scripts/make-solution-slide.py

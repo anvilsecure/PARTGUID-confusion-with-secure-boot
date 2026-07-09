@@ -26,6 +26,14 @@ QEMU=(qemu-system-aarch64
     -drive if=none,file="$DISK",format=raw,id=hd0
     -device virtio-blk-device,drive=hd0)
 
+# Signed-boot mode (make verity-signed): pass a key-bearing control DTB to QEMU so it
+# becomes U-Boot's control FDT, where FIT_SIGNATURE looks up the RSA public key.
+if [ -n "${DTB:-}" ]; then
+    [ -f "$DTB" ] || { echo "missing DTB=$DTB"; exit 1; }
+    QEMU+=(-dtb "$DTB")
+    echo "[run] control DTB (FIT key): $DTB"
+fi
+
 # Optional second disk (multi-disk PARTLABEL demo). Added AFTER hd0 so it enumerates
 # as virtio 1 in U-Boot / vdb in Linux, while $DISK is virtio 0 / vda.
 if [ -n "${DISK2:-}" ]; then
@@ -45,12 +53,20 @@ if [ "${1:-}" = "--capture" ]; then
         echo "# ----------------------------------------------------------------"
     } > "$LOG"
     set +e
-    # perl alarm gives a hard timeout without GNU timeout(1) (absent on macOS).
-    perl -e 'alarm shift @ARGV; exec @ARGV or die $!' "$TIMEOUT" \
-        "${QEMU[@]}" </dev/null 2>&1 | tee -a "$LOG"
-    rc=${PIPESTATUS[0]}
+    # Hard timeout without GNU timeout(1) (absent on macOS): run QEMU in the background
+    # and a watchdog that SIGKILLs it after TIMEOUT. kill -9 can't be caught, so a boot
+    # that fails at U-Boot and drops to the interactive '=>' prompt (no guest poweroff)
+    # cannot hang the capture. On a normal boot the guest powers off / resets and QEMU
+    # exits first, so the watchdog is cancelled.
+    "${QEMU[@]}" </dev/null >>"$LOG" 2>&1 &
+    qpid=$!
+    ( sleep "$TIMEOUT"; kill -9 "$qpid" 2>/dev/null ) &
+    wpid=$!
+    wait "$qpid"; rc=$?
+    kill "$wpid" 2>/dev/null; wait "$wpid" 2>/dev/null
     set -e
-    echo "[run] qemu exited (rc=$rc)"
+    [ "$rc" -gt 128 ] && echo "[run] qemu killed by watchdog after ${TIMEOUT}s (rc=$rc)" \
+                      || echo "[run] qemu exited (rc=$rc)"
     exit 0
 fi
 

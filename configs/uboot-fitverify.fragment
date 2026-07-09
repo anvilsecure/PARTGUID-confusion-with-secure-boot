@@ -1,0 +1,21 @@
+# U-Boot that ENFORCES FIT signature verification — for the complete dm-verity solution.
+#
+# The RSA public key lives in U-Boot's control FDT (on qemu that FDT comes from QEMU, so
+# we pass a key-bearing copy via -dtb). The bootcmd bootm's a SIGNED FIT (kernel + fdt)
+# directly from the boot slot; it does NOT `source` a writable boot.scr. That is the
+# whole point: the dm-verity root hash lives in the signed fdt's /chosen/bootargs, so an
+# attacker who rewrites the disk cannot substitute a non-verity cmdline — a tampered FIT
+# (or a tampered root hash) fails the signature and U-Boot refuses to boot.
+#
+# `setenv bootargs` (no value) UNSETS bootargs so U-Boot's fdt_chosen leaves the signed
+# /chosen/bootargs from the FIT's fdt intact instead of overwriting it.
+# CONFIG_BOOTSTD_BOOTCOMMAND is not set
+CONFIG_USE_BOOTCOMMAND=y
+CONFIG_BOOTCOMMAND="setenv bootargs; virtio scan; ext4load virtio 0:2 0x44000000 /kernel.itb && bootm 0x44000000#conf-1; ext4load virtio 1:2 0x44000000 /kernel.itb && bootm 0x44000000#conf-1; echo '*** no verified FIT booted (rejected/absent) — resetting ***'; reset"
+
+# real RSA-2048 signature verification of the FIT (kernel + fdt), enforced (required key)
+CONFIG_FIT=y
+CONFIG_FIT_SIGNATURE=y
+CONFIG_FIT_FULL_CHECK=y
+CONFIG_RSA=y
+CONFIG_SHA256=y

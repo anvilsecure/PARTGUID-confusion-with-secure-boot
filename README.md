@@ -104,8 +104,9 @@ experiments`).
 | verity / PARTLABEL multi-disk | attacker disk selected → **panic** (evil blocked) |
 
 Each row's boot log is committed under `results/`. The mitigation also runs on its own with
-`make verity`; other standalone scenarios: `make mldisk [partuuid]`, or `make image
-STRATEGY=partuuid && make run`.
+`make verity`, and the **complete solution** — the verity root hash anchored in an RSA-signed
+FIT — with `make verity-signed` (see below). Other standalone scenarios: `make mldisk
+[partuuid]`, or `make image STRATEGY=partuuid && make run`.
 
 The **multi-disk** rows (5–8) model the realistic attack — an embedded device (e.g. a
 router) plus an **attacker USB stick**:
@@ -146,9 +147,17 @@ that Linux mounts later.)
 
 The correct fix binds rootfs integrity to the **content Linux actually mounts**, not to a
 re-resolvable identifier: **dm-verity** with a root hash carried in the signed boot
-artifacts. `make verity` demonstrates it — under the same PARTUUID/PARTLABEL collision the
-kernel opens the attacker partition as the verity data device, the hash of its blocks does
-not match the golden root hash, and it **panics** instead of running the evil rootfs. See
-`results/RESULTS.md`.
+artifacts. `make verity` demonstrates the mechanism — under the same PARTUUID/PARTLABEL
+collision the kernel opens the attacker partition as the verity data device, the hash of
+its blocks does not match the golden root hash, and it **panics** instead of running the
+evil rootfs.
+
+`make verity` leaves one gap, though: its root hash rides in an unsigned `boot.scr` on a
+writable partition. The **complete solution** (`make verity-signed`) closes it — the verity
+cmdline (root hash) lives inside an **RSA-2048 signed FIT** that U-Boot `bootm`s directly
+(no writable script to override it). Three asserted boots: golden **boots**, evil **panics**,
+and a **tampered signed FIT is refused**. Both holes are shut — a colliding rootfs is caught
+by verity, and rewriting the boot artifact to weaken verity breaks the signature. Mechanism
+of the fix at a glance: [docs/solution.jpg](docs/solution.jpg). See `results/RESULTS.md`.
 
 See `docs/ANALYSIS.md` for the detailed mechanism writeup.

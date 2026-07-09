@@ -25,6 +25,11 @@ echo "#  mounted as /    : ${ROOTSRC}   (fs UUID ${ROOTFSUUID})"
 echo "########################################################################"
 echo
 
+# Infra: save the live device tree QEMU+U-Boot handed this kernel. The signed-verity
+# demo (make verity-signed) reuses it as the ~8KB known-bootable base for the FIT's fdt
+# and for the key-bearing control DTB (the -machine dumpdtb blob won't boot the kernel).
+cat /sys/firmware/fdt > /live.dtb 2>/dev/null; sync
+
 case "$ID" in
   *EVIL*)
     echo "  *** ROOTFS VERIFICATION BYPASSED VIA PARTITION-ID CONFUSION ***"

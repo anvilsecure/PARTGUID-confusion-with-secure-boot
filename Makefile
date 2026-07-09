@@ -12,7 +12,7 @@ STRATEGY     ?= partuuid
 DRUN         := docker run --rm -t -v "$(PWD)":/work -w /work $(IMG)
 
 .PHONY: help env uboot kernel busybox rootfs image run demo all clean distclean \
-        experiments partuuid partlabel verity mldisk
+        experiments partuuid partlabel verity verity-signed mldisk
 
 help:
 	@echo "Targets:"
@@ -28,6 +28,7 @@ help:
 	@echo "  partuuid     BASELINE + PARTUUID group only"
 	@echo "  partlabel    BASELINE + PARTLABEL group only"
 	@echo "  verity    dm-verity mitigation on its own (good + evil, single- and multi-disk)"
+	@echo "  verity-signed  COMPLETE fix: verity root hash in an RSA-signed FIT (good/evil/tamper)"
 	@echo "  mldisk    one scenario: multi-disk PARTLABEL bypass"
 	@echo "  demo      all + image + run"
 	@echo "  clean     remove out/ artifacts (keep vendored sources)"
@@ -70,6 +71,11 @@ partlabel:
 # MITIGATION: dm-verity binds root to a hash, rejecting the confused partition
 verity:
 	scripts/verity-demo.sh
+
+# COMPLETE SOLUTION: dm-verity whose root hash is anchored in an RSA-signed FIT
+# (golden boots, evil panics, a tampered signed FIT is refused)
+verity-signed:
+	scripts/verity-signed-demo.sh
 
 # multi-disk PARTLABEL: U-Boot verifies the eMMC rootfs, Linux mounts the SD's rootfs
 mldisk:

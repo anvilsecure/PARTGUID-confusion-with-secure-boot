@@ -1,0 +1,50 @@
+# partguid-confusion-lab capture
+# qemu      : QEMU emulator version 11.0.1
+# u-boot.bin: sha256 24147f78eb7b0e6ce8a78a4aabf80df4990f5b95fb429c48ca9a1caf562a5051
+# disk.img  : sha256 bb0d843855e87d34f2c44aa63131622f501aa21dc27780fa12d8c2e2418c7d78
+# expect    : TAMPER-REFUSED rootfs mounted
+# ----------------------------------------------------------------
+
+
+U-Boot 2024.07-dirty (Jul 09 2026 - 16:07:19 +0000)
+
+DRAM:  512 MiB
+Core:  51 devices, 14 uclasses, devicetree: board
+Flash: 64 MiB
+Loading Environment from Flash... *** Warning - bad CRC, using default environment
+
+In:    serial,usbkbd
+Out:   serial,vidconsole
+Err:   serial,vidconsole
+No USB controllers found
+Net:   eth0: virtio-net#32
+[?25h
+starting USB...
+No USB controllers found
+Hit any key to stop autoboot:  2  1  0 
+41801338 bytes read in 74 ms (538.7 MiB/s)
+## Loading kernel from FIT Image at 44000000 ...
+   Using 'conf-1' configuration
+   Verifying Hash Integrity ... sha256,rsa2048:dev+ OK
+   Trying 'kernel' kernel subimage
+     Description:  unavailable
+     Created:      2026-07-09  16:07:58 UTC
+     Type:         Kernel Image
+     Compression:  uncompressed
+     Data Start:   0x440000c0
+     Data Size:    41792000 Bytes = 39.9 MiB
+     Architecture: AArch64
+     OS:           Linux
+     Load Address: 0x40400000
+     Entry Point:  0x40400000
+     Hash algo:    sha256
+     Hash value:   1cb91679841e5fd813dba5f5be90c491a27be26c024ca7a4bb2afafc251a4a3d
+   Verifying Hash Integrity ... sha256 error!
+Bad hash value for 'hash-1' hash node in 'kernel' image node
+Bad Data Hash
+ERROR -2: can't get kernel image!
+** Bad device specification virtio 1 **
+Couldn't find partition virtio 1:2
+Can't set block device
+*** no verified FIT booted (rejected/absent) — resetting ***
+resetting ...

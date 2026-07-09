@@ -179,6 +179,34 @@ rootfs never ran (no `ROOTFS IDENTITY : EVIL` in the log). Even though Linux sti
 resolved the duplicated PARTUUID to the attacker partition, integrity was bound to a
 hash, so the wrong partition is rejected.
 
-Takeaway: sign/verify the kernel *and* protect the
-rootfs with dm-verity whose root hash is inside the signed boot artifacts — do not
-trust a rootfs located by a duplicable PARTUUID/PARTLABEL.
+Takeaway: sign/verify the kernel *and* protect the rootfs with dm-verity whose root hash
+is inside the signed boot artifacts — do not trust a rootfs located by a duplicable
+PARTUUID/PARTLABEL. Plain `make verity` proves the *mechanism*, but its root hash rides in
+an unsigned `boot.scr`; the **complete solution** below anchors it in a signed FIT.
+
+## Complete solution — root hash in a signed FIT  (`make verity-signed`)
+
+`make verity` leaves one gap: the dm-verity root hash lives in `boot.scr` on a writable
+partition, so an attacker who can rewrite the disk could weaken the verity cmdline. The
+complete fix puts the verity cmdline (root hash) inside an **RSA-2048 signed FIT** and has
+U-Boot `bootm` it directly — it does not `source` a writable script, so the root hash
+cannot be substituted. Built by `scripts/make-verity-signed.sh`; U-Boot from
+`scripts/build-uboot-fitverify.sh` (CONFIG_FIT_SIGNATURE, key in the control DTB via `-dtb`).
+
+Three boots, all asserted:
+
+- **good** ([boot-vsigned-good.log](boot-vsigned-good.log)): `Verifying Hash Integrity ...
+  sha256,rsa2048:dev+ OK` (FIT signature verified) → verity passes the golden data →
+  `ROOTFS IDENTITY : GOOD`. The signed path boots.
+- **evil** ([boot-vsigned-evil.log](boot-vsigned-evil.log)): FIT verified (`rsa2048:dev+ OK`),
+  yet under the same PARTUUID collision `device-mapper: verity: 254:1: data block 0 is
+  corrupted` → `Kernel panic: dm-verity device corrupted`. Evil blocked.
+- **tamper** ([boot-vsigned-tamper.log](boot-vsigned-tamper.log)): flip one byte in the
+  signed FIT → the config signature is structurally valid but the payload hash fails
+  (`Bad Data Hash` / `can't get kernel image`) → U-Boot refuses and resets. The FIT
+  (kernel **and** the fdt carrying the root hash) is integrity-protected — the tamper here
+  targets the kernel payload; the root-hash-bearing fdt rides under the identical signature.
+
+Now both holes are closed: an attacker who supplies a colliding rootfs is caught by verity
+(evil panics), and an attacker who rewrites the boot artifact to weaken verity breaks the
+signature (tamper refused). Diagram: [docs/solution.jpg](docs/solution.jpg).
