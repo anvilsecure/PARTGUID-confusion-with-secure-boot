@@ -19,3 +19,8 @@ CONFIG_FIT_SIGNATURE=y
 CONFIG_FIT_FULL_CHECK=y
 CONFIG_RSA=y
 CONFIG_SHA256=y
+
+# Never read an environment from storage: an attacker-writable env on disk could
+# replace bootcmd and would be a secure-boot bypass of its own.
+CONFIG_ENV_IS_NOWHERE=y
+# CONFIG_ENV_IS_IN_FLASH is not set

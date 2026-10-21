@@ -1,91 +1,78 @@
 # Boot recipe — hash-verify (the confusion demos)
 
-Used by the **BASELINE / PARTUUID / PARTLABEL** groups of `make experiments` (and `make image
-… && make run`). One boot script drives all of them; the scenario is defined by the disk
-layout ([`make-image.sh`](../scripts/make-image.sh) / [`make-multidisk.sh`](../scripts/make-multidisk.sh))
-and the `root=` spec baked into the script.
+Used by the **BASELINE / PARTUUID / PARTLABEL** groups of `make experiments`. One boot
+flow drives all of them; the scenario is defined by the disk layout
+([`make-image.sh`](../scripts/make-image.sh) / [`make-multidisk.sh`](../scripts/make-multidisk.sh)).
 
-This path models a vendor whose bootloader **verifies the rootfs it selects by name/slot** and
-then hands Linux a `root=<spec>` that Linux **re-resolves on its own** — the two can land on
-different partitions. (`verify_image` is modelled with `hash sha256` over a marker file, a
-stand-in for a signature; the confusion is identical regardless of the crypto used.)
+This path models a vendor whose bootloader **verifies the rootfs it selects by name** and
+then hands Linux a `root=` that Linux **re-resolves on its own** — and the two can land on
+different partitions.
 
-## A) U-Boot `bootcmd` — compiled into U-Boot
+## Nothing security-relevant lives on the disk
 
-From [`configs/uboot.fragment`](../configs/uboot.fragment) (`CONFIG_BOOTCOMMAND`): scan the
-virtio disks for a `boot.scr` and `source` the first one found, recording the device in
-`${bootdev}`.
+There is **no boot script on the disk**. A `boot.scr` sits on an attacker-writable
+partition, so verifying the rootfs from a disk-resident script would be a secure-boot
+bypass in itself — the attacker would simply rewrite the script. Instead:
+
+| piece | where it lives | how it is protected |
+|-------|----------------|---------------------|
+| boot logic (`bootcmd`, `verify_rootfs`, `setup_bootargs`) | compiled into the U-Boot binary (`CONFIG_ENV_SOURCE_FILE`) | trusted / read-only; U-Boot never reads an environment from storage (`CONFIG_ENV_IS_NOWHERE`) |
+| golden hash | same embedded environment | same |
+| kernel | `kernel.itb` in the boot slot | **RSA-2048 FIT signature**, key in the control FDT |
+| rootfs content | data partition | the only thing the disk contributes — and the subject of this lab |
+
+So every row of the matrix boots a **verified** chain. What remains exposed is exactly the
+bug: the mapping from an identifier to a block device.
+
+## The two steps that matter
+
+From [`uboot/partguid.env.in`](../uboot/partguid.env.in). Everything else is plumbing.
+
+**`verify_rootfs`** — find the partition by name and hash the **whole partition**:
 
 ```sh
-virtio scan
-setenv bootdev 0; ext4load virtio 0:2 ${scriptaddr} /boot.scr && source ${scriptaddr}
-setenv bootdev 1; ext4load virtio 1:2 ${scriptaddr} /boot.scr && source ${scriptaddr}
+part number virtio ${bootdev} ${rootname} rootpart;    # locate BY NAME
+part start  virtio ${bootdev} ${rootpart} rootstart;
+part size   virtio ${bootdev} ${rootpart} rootblocks;
+setexpr rootbytes ${rootblocks} * 0x200;
+virtio device ${bootdev};                              # 'virtio read' uses the CURRENT
+virtio read ${rootbuf_addr} ${rootstart} ${rootblocks};#  device — select it explicitly
+hash sha256 ${rootbuf_addr} ${rootbytes} vhash;
+if test "${vhash}" = "${goodhash}"; then ... else reset; fi
 ```
 
-This models a device that boots from whichever medium carries the boot slot: single disk →
-`bootdev=0`; device + attacker USB → the USB (virtio 0) has no boot slot, so U-Boot falls
-through to the internal disk on virtio 1 (`bootdev=1`).
+The rootfs partitions are sized **exactly** like the rootfs images, so
+`sha256(partition) == sha256(good.img) ==` the `goodhash` baked into U-Boot.
 
-## B) The boot script — [`uboot/boot.cmd`](../uboot/boot.cmd)
-
-A template with `@@…@@` placeholders, compiled to `boot.scr` by `make-image.sh` (via `mkimage`):
+**`setup_bootargs`** — tell Linux where root is:
 
 ```sh
-# load_kernel from the boot slot
-ext4load virtio ${bootdev}:2 ${kernel_addr_r} /Image
-
-# load_rootfs + verify_image: locate the rootfs BY NAME '@@ROOTNAME@@' and hash its marker
-ext4load virtio ${bootdev}#@@ROOTNAME@@ 0x46000000 /etc/rootfs-id
-hash sha256 0x46000000 ${filesize} vhash
-if test "${vhash}" = "@@GOODHASH@@"; then
-    echo " ROOTFS VERIFIED OK -> U-Boot TRUSTS '@@ROOTNAME@@'"
-else
-    echo " ROOTFS VERIFICATION FAILED -> refusing to boot"
-    reset                                   # refuse (a shell would itself be a bypass)
-fi
-
-# setup_bootargs: Linux locates root BY @@ROOTSPEC@@ — re-resolved INDEPENDENTLY
-setenv bootargs "console=ttyAMA0 root=@@ROOTSPEC@@ rootfstype=ext4 rootwait rw init=/sbin/init panic=-1 partguid.verified"
-booti ${kernel_addr_r} - ${fdtcontroladdr}
+part uuid virtio ${bootdev}:${rootpart} rootuuid;      # the PARTUUID of the partition
+setenv rootspec PARTUUID=${rootuuid};                  #  we JUST VERIFIED
+setenv bootargs "console=${console} root=${rootspec} rootfstype=ext4 rootwait rw ..."
 ```
 
-**The crux**: U-Boot verifies the partition it found **by name** (`#@@ROOTNAME@@`), then tells
-Linux to mount **by `@@ROOTSPEC@@`**. When those resolve to different partitions, U-Boot
-verified one and Linux mounts another.
+**This is the crux.** The bootloader does the reasonable thing: it verifies a partition and
+passes Linux *that partition's own* identifier. It is still defeated, because GPT does not
+enforce uniqueness — Linux resolves the same identifier to the **first** match, which can be
+a different partition entirely.
 
-## Where the variables come from
+(The PARTLABEL build is identical except that `setup_bootargs` uses
+`root=PARTLABEL=${rootname}`; that is the only difference between the two U-Boot binaries.)
 
-- **`@@…@@` = build-time** (substituted by `make-image.sh` with `sed`, so they are literal
-  strings in the compiled `boot.scr`):
+## Per-scenario outcomes
 
-  | placeholder | set to | by |
-  |-------------|--------|----|
-  | `@@ROOTNAME@@` | `rootfs` | `ROOTNAME=rootfs` |
-  | `@@GOODHASH@@` | sha256 of the golden marker | `sha256sum rootfs/good/etc/rootfs-id` |
-  | `@@ROOTSPEC@@` | `PARTUUID=<guid>` or `PARTLABEL=rootfs` | per scenario |
+| scenario | disk layout | outcome |
+|----------|-------------|---------|
+| BASELINE good-only | one partition named `rootfs` = golden | hash OK → **GOOD** |
+| BASELINE evil-only | one partition named `rootfs` = evil | hash ≠ golden → **refuse** |
+| PARTUUID (single) | p1 evil + p3 golden **share PARTUUID X**; golden named `rootfs` | U-Boot verifies p3 and derives `root=PARTUUID=X`; Linux takes the first match = p1 → **EVIL** |
+| PARTLABEL (single) | p1 evil + p3 golden **both named `rootfs`** | both resolvers pick the first `rootfs` = p1 → U-Boot **catches it** |
+| PARTUUID / PARTLABEL (multi-disk) | internal golden (has the boot slot) + attacker USB (rootfs only) | U-Boot boots and verifies the internal disk; Linux enumerates the USB first → **EVIL** |
 
-- **`${…}` = runtime U-Boot env**: `${bootdev}` set by the bootcmd (which disk); `${scriptaddr}`,
-  `${kernel_addr_r}`, `${fdtcontroladdr}` are the board's default env (see `printenv`);
-  `${filesize}` is set by the load command; `vhash` is set by `hash`.
+On a single disk the divergence comes from **different selectors** (U-Boot by GPT name vs
+Linux by PARTUUID); across two disks it comes from **different scope** (U-Boot looks only at
+the disk it booted from, Linux first-matches across all of them). In QEMU both resolvers
+agree on enumeration order, so neither case depends on a race. See [ANALYSIS.md](ANALYSIS.md).
 
-## Per-scenario parameterization
-
-| scenario | `@@ROOTSPEC@@` | disk layout | outcome |
-|----------|----------------|-------------|---------|
-| BASELINE good-only | `PARTUUID=X` | one `rootfs` = golden | verify OK → **GOOD** |
-| BASELINE evil-only | `PARTUUID=X` | one `rootfs` = evil | hash ≠ golden → **refuse** |
-| PARTUUID (single) | `PARTUUID=X` | p1 evil + p3 golden **share PARTUUID X**; golden named `rootfs` | U-Boot verifies p3 (by name), Linux picks p1 (first PARTUUID match) → **EVIL** |
-| PARTLABEL (single) | `PARTLABEL=rootfs` | p1 evil + p3 golden **both named `rootfs`** | both resolvers pick the first `rootfs` → agree → U-Boot **catches it** |
-| PARTUUID / PARTLABEL (multi-disk) | as above | internal golden (has boot slot) + attacker USB (rootfs only) | U-Boot verifies the internal disk it booted; Linux enumerates the USB first → **EVIL** |
-
-Note: on a single disk the divergence comes from **different selectors** (U-Boot by GPT name
-vs Linux by PARTUUID), not from the same identifier resolving in a different order — in QEMU
-both resolvers agree on enumeration order. See [ANALYSIS.md](ANALYSIS.md).
-
-## Threat-model caveat (state this in the writeup)
-
-Here `boot.scr` sits on a **writable** partition. The demo is only a faithful model of the bug
-if you assume the boot chain (bootloader + script + cmdline) is **signed/verified** while the
-partition table and rootfs are not — otherwise an attacker would just edit `boot.scr`. The
-[signed dm-verity recipe](signed-verity-boot.md) makes that boundary real (signed cmdline, no
-writable script) and shows the fix.
+The mitigation is in [signed-verity-boot.md](signed-verity-boot.md).

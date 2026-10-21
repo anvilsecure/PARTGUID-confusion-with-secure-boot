@@ -65,10 +65,12 @@ Disk:
 | p2   | boot       | (unique)                                 | U-Boot's fixed golden boot slot        |
 | p3   | root-good  | `11111111-2222-3333-4444-555555555555`   | the rootfs U-Boot intends to trust     |
 
-`boot.scr` (loaded from the fixed golden slot p2) sets
-`root=PARTUUID=11111111-2222-3333-4444-555555555555`. U-Boot's job is to validate the
-golden artifacts; it does. Linux then resolves that PARTUUID to **p1**, the
-attacker's partition, and runs its `/sbin/init`.
+U-Boot's embedded environment (there is no script on the disk) locates the partition named
+`rootfs`, hashes it against a golden hash compiled into that environment, and then sets
+`root=PARTUUID=...` from **that partition's own GUID** — here
+`11111111-2222-3333-4444-555555555555`. U-Boot's job is to validate the golden artifacts;
+it does. Linux then resolves that same PARTUUID to **p1**, the attacker's partition, and
+runs its `/sbin/init`.
 
 The two rootfs images print a loud banner identifying themselves, so a single boot
 log shows: signed kernel + intact signed cmdline → **EVIL** rootfs mounted.

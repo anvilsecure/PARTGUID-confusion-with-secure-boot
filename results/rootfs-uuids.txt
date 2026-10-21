@@ -1,2 +1,2 @@
-  good.img = bea2b942-ba54-415a-871e-ee6447cee9ab
-  evil.img = baea5211-314e-4d7d-ba6c-63f56f83f7d2
+  good.img = a941861c-6b80-4d08-a69e-b733a61063f0
+  evil.img = ac19e604-acbd-4091-a6fe-c9681f77610d

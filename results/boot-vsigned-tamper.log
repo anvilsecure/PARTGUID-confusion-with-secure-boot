@@ -1,18 +1,17 @@
 # partguid-confusion-lab capture
-# qemu      : QEMU emulator version 11.0.1
-# u-boot.bin: sha256 2c640d85aca7985399dee53748dd50712c4907ca7b3066391082ce5ab9611d84
-# disk.img  : sha256 b5b24c7e42e3c27d547e4cfdf32d3db07cc517d626b8793e4782e5c57d2f1f33
+# qemu      : QEMU emulator version 11.1.1
+# u-boot.bin: sha256 c46fb1d6b9dfa17903bdd548a4a6fa0f0b8551516a739705227a34eb30dab29d
+# disk.img  : sha256 788c98a074020945c690637787087e0e99737229fac5703b2eca7fd8ce4c58a3
 # expect    : TAMPER-REFUSED rootfs mounted
 # ----------------------------------------------------------------
 
 
-U-Boot 2024.07-dirty (Jul 09 2026 - 16:54:25 +0000)
+U-Boot 2024.07-dirty (Oct 14 2026 - 15:55:27 +0000)
 
 DRAM:  512 MiB
 Core:  51 devices, 14 uclasses, devicetree: board
 Flash: 64 MiB
-Loading Environment from Flash... *** Warning - bad CRC, using default environment
-
+Loading Environment from nowhere... OK
 In:    serial,usbkbd
 Out:   serial,vidconsole
 Err:   serial,vidconsole
@@ -22,13 +21,13 @@ Net:   eth0: virtio-net#32
 starting USB...
 No USB controllers found
 Hit any key to stop autoboot:  2  1  0 
-41801338 bytes read in 74 ms (538.7 MiB/s)
+41801338 bytes read in 73 ms (546.1 MiB/s)
 ## Loading kernel from FIT Image at 44000000 ...
    Using 'conf-1' configuration
    Verifying Hash Integrity ... sha256,rsa2048:dev+ OK
    Trying 'kernel' kernel subimage
      Description:  unavailable
-     Created:      2026-07-09  16:55:04 UTC
+     Created:      2026-10-14  15:56:05 UTC
      Type:         Kernel Image
      Compression:  uncompressed
      Data Start:   0x440000c0
@@ -38,7 +37,7 @@ Hit any key to stop autoboot:  2  1  0
      Load Address: 0x40400000
      Entry Point:  0x40400000
      Hash algo:    sha256
-     Hash value:   1cb91679841e5fd813dba5f5be90c491a27be26c024ca7a4bb2afafc251a4a3d
+     Hash value:   e18738c84414e817bac3e522d535517b631db8dec69a2c9f3786cbf074a735c6
    Verifying Hash Integrity ... sha256 error!
 Bad hash value for 'hash-1' hash node in 'kernel' image node
 Bad Data Hash

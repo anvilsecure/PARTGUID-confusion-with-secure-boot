@@ -44,13 +44,15 @@ standing in for a signature), then boots Linux with `root=<spec>`. Linux re-reso
 ```
 docker/Dockerfile        build environment (debian + aarch64 cross + gdisk + u-boot-tools)
 configs/kernel.fragment  extra kernel .config options (ext4, gpt, virtio, devtmpfs)
-scripts/build-uboot.sh   build U-Boot for qemu_arm64
+configs/uboot-signed.fragment  U-Boot config: embedded env + enforced FIT signature
+uboot/partguid.env.in    the boot logic, compiled INTO U-Boot (no script on disk)
+scripts/build-uboot.sh   build U-Boot (partuuid|partlabel) with that env embedded
+scripts/sign-kernel-fit.sh  sign the kernel FIT + key the control DTB
 scripts/build-kernel.sh  build a minimal arm64 Linux Image
 scripts/build-busybox.sh build a static aarch64 busybox
 scripts/make-rootfs.sh   assemble good/ and evil/ ext4 rootfs images
 scripts/make-image.sh    craft the GPT disk for a scenario (partuuid|partlabel)
 scripts/run-qemu.sh      launch on the host's qemu-system-aarch64
-uboot/boot.cmd           U-Boot boot script: verify rootfs by name, boot by @@ROOTSPEC@@
 rootfs/{good,evil}/      per-rootfs overlay (init banner + identity marker)
 out/                     build artifacts (gitignored)
 ```
@@ -135,14 +137,19 @@ Boot logs are committed under `results/` with a `sha256`/QEMU-version provenance
 
 ## Verification model
 
-U-Boot's `verify_image` is modelled with `hash sha256` over a marker in the rootfs it
-selects **by name** — a stand-in for a signature check. The *strength* of that check is
-deliberately orthogonal to the bug: the confusion is about *which partition* is selected,
-not about the crypto. Whether U-Boot validates the golden rootfs with a hash or a real
-signature, it still verifies the partition it found *by name*, while Linux mounts the one
-it resolves *by identifier* — a different partition. (This is also why signing the *kernel*
-doesn't help: U-Boot can only verify what it loads into RAM, never the block-device rootfs
-that Linux mounts later.)
+**The whole boot chain is verified, on every row of the matrix.** The boot logic lives in
+U-Boot's built-in environment (`CONFIG_ENV_SOURCE_FILE`), U-Boot never reads an environment
+from storage (`CONFIG_ENV_IS_NOWHERE`), and the kernel is an **RSA-2048 signed FIT** — so
+every successful boot log carries `Verifying Hash Integrity ... sha256,rsa2048:dev+ OK`.
+There is no boot script on the disk to rewrite. That matters: it removes the obvious
+objection that secure boot was already defeated before the rootfs was ever checked.
+
+What is left exposed is only the bug. U-Boot locates the rootfs **by name**, hashes the
+**whole partition** against a golden hash baked into its trusted environment, and then does
+the reasonable thing — it passes Linux the PARTUUID **of the very partition it just
+verified**. Linux re-resolves that identifier on its own and can land on a *different*
+partition, because GPT does not enforce uniqueness. Signing the kernel cannot help here:
+U-Boot can only verify what it loads into RAM, never the block device Linux mounts later.
 
 The correct fix binds rootfs integrity to the **content Linux actually mounts**, not to a
 re-resolvable identifier: **dm-verity** with the root hash carried in a *signed* boot
@@ -154,15 +161,15 @@ is refused** (signature enforced). Both holes are shut — a colliding rootfs is
 verity, and rewriting the boot artifact to weaken verity breaks the signature. Mechanism of
 the fix at a glance: [docs/solution.jpg](docs/solution.jpg). See `results/RESULTS.md`.
 
-## Boot scripts
+## Boot logic
 
 The exact U-Boot boot logic for each path, annotated (what U-Boot loads, verifies, and how
 `root=` is set):
 
 * [docs/hash-verify-boot.md](docs/hash-verify-boot.md) — the **BASELINE / PARTUUID / PARTLABEL**
-  demos: `uboot/boot.cmd` verifies the rootfs by name (hash) and hands Linux a re-resolvable
-  `root=`.
-* [docs/signed-verity-boot.md](docs/signed-verity-boot.md) — the **mitigation**: no `boot.scr`;
-  the verity root hash rides in an RSA-signed FIT that U-Boot `bootm`s directly.
+  demos: U-Boot's embedded env verifies the rootfs by name (whole-partition hash) and hands
+  Linux the PARTUUID of the partition it just verified.
+* [docs/signed-verity-boot.md](docs/signed-verity-boot.md) — the **mitigation**: the verity
+  root hash rides in an RSA-signed FIT, so it cannot be weakened.
 
 See `docs/ANALYSIS.md` for the detailed mechanism writeup.

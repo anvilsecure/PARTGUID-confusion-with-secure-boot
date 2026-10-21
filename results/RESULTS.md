@@ -36,7 +36,8 @@ Env: U-Boot 2024.07 (`qemu_arm64`), Linux 6.6, busybox 1.36.1, QEMU `-M virt`, v
   the golden one. U-Boot's by-name hash check passes and the **GOOD** rootfs boots. So a
   correct system works.
 - **evil-only** ([boot-evil-only.log](boot-evil-only.log)): the only `rootfs` partition is
-  evil. U-Boot's hash of the marker ≠ golden → `ROOTFS VERIFICATION FAILED -> resetting`.
+  evil. U-Boot's hash of the whole partition ≠ golden → `ROOTFS VERIFICATION FAILED ->
+  resetting`.
   The system does **not** boot. So the check is meaningful — it rejects a bad rootfs.
 
 The bypass phases below matter *because* of these baselines: verification genuinely
@@ -44,21 +45,24 @@ accepts good and rejects evil, yet the confusion makes Linux mount evil anyway.
 
 ## Model
 
-U-Boot's boot script:
-1. loads the kernel from a fixed boot slot,
-2. locates the rootfs **by name** (partlabel `rootfs`) and **verifies** it
-   (modelled with `hash sha256` of a marker file — a stand-in for a signature check),
-3. sets `root=<spec>` for Linux and boots (`booti`, using QEMU's control FDT).
+U-Boot's boot logic is **compiled into the binary** (`CONFIG_ENV_SOURCE_FILE`) and U-Boot
+never reads an environment from storage (`CONFIG_ENV_IS_NOWHERE`), so there is no boot
+script on the disk to rewrite:
+1. loads a **signed kernel FIT** from the boot slot and enforces its RSA-2048 signature,
+2. locates the rootfs **by name** (partlabel `rootfs`) and **verifies** it by hashing the
+   **whole partition** against a golden hash baked into that trusted environment,
+3. sets `root=` from the PARTUUID **of the partition it just verified**, and boots.
 
-The gap: U-Boot verifies the partition it found **by name**, but Linux re-resolves
-`<spec>` (PARTUUID or PARTLABEL) **independently**, and can mount a *different*
-partition. The verified partition and the mounted partition are not the same one.
+The gap: U-Boot verifies the partition it found **by name**, but Linux re-resolves that
+identifier **independently**, and can mount a *different* partition. The verified
+partition and the mounted partition are not the same one — even though the bootloader,
+the kernel and the command line are all covered by the signature.
 
 ## Ground truth (filesystem UUIDs)
 
 ```
-good.img = bea2b942-ba54-415a-871e-ee6447cee9ab
-evil.img = baea5211-314e-4d7d-ba6c-63f56f83f7d2
+good.img = a941861c-6b80-4d08-a69e-b733a61063f0
+evil.img = ac19e604-acbd-4091-a6fe-c9681f77610d
 ```
 Cross-check the `EXT4-fs (vdaN): mounted filesystem <uuid>` line against these to tie
 each boot to good/evil independently of the banner text.
@@ -70,19 +74,21 @@ Both p1 and p3 carry the same unique GUID `11111111-…-555555555555`.
 cmdline: `root=PARTUUID=11111111-…-555555555555`.
 
 ```
- U-Boot: rootfs(name=rootfs) marker sha256 = 462bba11...0d9   (matches golden)
- U-Boot: ROOTFS VERIFIED OK -> U-Boot TRUSTS the partition named 'rootfs'   (= p3, good)
+ U-Boot: rootfs(name=rootfs, virtio 0:0x3) sha256 = b2854cbe…9759   (matches golden)
+ U-Boot: ROOTFS VERIFIED OK -> U-Boot TRUSTS rootfs on virtio 0:0x3         (= p3, good)
+ --- setup_bootargs: Linux will locate root BY PARTUUID=11111111-…-555555555555 ---
+    Verifying Hash Integrity ... sha256,rsa2048:dev+ OK        (the kernel IS signed)
  ...
- EXT4-fs (vda1): mounted filesystem baea5211-...f7d2 r/w       (= evil.img)
+ EXT4-fs (vda1): mounted filesystem ac19e604-…-c9681f77610d r/w (= evil.img)
  VFS: Mounted root (ext4 filesystem) on device 254:1.          (254:1 = vda1)
  #  ROOTFS IDENTITY : EVIL
  *** ROOTFS VERIFICATION BYPASSED VIA PARTITION-ID CONFUSION ***
 ```
 
-U-Boot verified **p3** (good, found by name `rootfs`). Linux resolved the duplicated
-PARTUUID to the first match = **vda1** (evil). fs-UUID `baea5211` confirms it is
-`evil.img`, not the verified partition. **The check passed and unsigned code still ran
-as root.** This is the single-disk PARTUUID exploit — trivial to craft (GPT does not
+U-Boot verified **p3** (good, found by name `rootfs`) and derived `root=PARTUUID=X` from
+*that* partition. Linux resolved the duplicated PARTUUID to the first match = **vda1**
+(evil). fs-UUID `ac19e604` confirms it is `evil.img`, not the verified partition. **The
+signature checks all passed and unsigned rootfs code still ran as root.** This is the single-disk PARTUUID exploit — trivial to craft (GPT does not
 enforce PARTUUID uniqueness) and requires only that the attacker copy sit at a lower
 partition index than the golden one.
 
@@ -92,7 +98,7 @@ Disk: p1 `rootfs` (evil, GUID A), p2 `boot`, p3 `rootfs` (good, GUID B) — two
 partitions sharing the **name** `rootfs`. cmdline: `root=PARTLABEL=rootfs`.
 
 ```
- U-Boot: rootfs(name=rootfs) marker sha256 = 4d823152...633   (= evil's marker, NOT golden)
+ U-Boot: rootfs(name=rootfs, virtio 0:0x1) sha256 = fa7f201f…e3f8   (= evil, NOT golden)
  U-Boot: ROOTFS VERIFICATION FAILED -> refusing to boot
  resetting ...
 ```
@@ -114,14 +120,14 @@ Realistic setup — a device with internal media plus an inserted attacker USB s
   the same PARTUUID `1111…5555` (PARTUUID case — the classic "duplicate PARTUUID on
   another drive connected to the same system").
 
-U-Boot's bootcmd scans the disks for `boot.scr`: the USB (virtio 0) has no boot slot, so
-U-Boot falls through to the internal disk (virtio 1) and boots it — `${bootdev}=1`:
+U-Boot's bootcmd scans the disks for a signed `kernel.itb`: the USB (virtio 0) has no boot
+slot, so U-Boot falls through to the internal disk (virtio 1) and boots it — `${bootdev}=1`:
 
 ```
- ** Invalid partition 2 **                                   (virtio 0 = USB, no boot slot)
+ U-Boot: no signed /kernel.itb in slot boot on virtio 0 -- trying next slot
  U-Boot booted from virtio 1 ...                             (fell through to internal media)
  U-Boot: ROOTFS VERIFIED OK -> ... on virtio 1              (verified the internal golden rootfs)
- EXT4-fs (vda1): mounted filesystem baea5211-...f7d2 r/w     (= evil.img, the USB)
+ EXT4-fs (vda1): mounted filesystem ac19e604-…-c9681f77610d r/w (= evil.img, the USB)
  #  ROOTFS IDENTITY : EVIL
 ```
 

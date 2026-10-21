@@ -1,29 +1,25 @@
 # partguid-confusion-lab capture
-# qemu      : QEMU emulator version 11.0.1
-# u-boot.bin: sha256 63d31e9d834780db3363105cbd551ca52ab6b99829564235853d8e880f0c9e4a
-# disk.img  : sha256 ed47ec454e1719ce92091e630a50c08608cd03496c4de3bbe2d8a7583f34982c
-# expect    : EVIL rootfs mounted
+# qemu      : QEMU emulator version 11.1.1
+# u-boot.bin: sha256 40f86f6a8dedc6467069fd1dbc7bc034caf299da2d84c9a7b423b3cf980c4659
+# disk.img  : sha256 7e9664035401b627505e31d5c9ada9304064b85ebef05fbe99fa7c31cf2b71f9
+# expect    : VERIFY-FAIL rootfs mounted
 # ----------------------------------------------------------------
 
 
-U-Boot 2024.07-dirty (Jul 08 2026 - 15:01:13 +0000)
+U-Boot 2024.07-dirty (Oct 14 2026 - 15:53:46 +0000)
 
 DRAM:  512 MiB
 Core:  51 devices, 14 uclasses, devicetree: board
 Flash: 64 MiB
-Loading Environment from Flash... *** Warning - bad CRC, using default environment
-
-In:    serial,usbkbd
-Out:   serial,vidconsole
-Err:   serial,vidconsole
+Loading Environment from nowhere... OK
+In:    serial
+Out:   serial
+Err:   serial
 No USB controllers found
 Net:   eth0: virtio-net#32
 [?25h
 starting USB...
 No USB controllers found
-Hit any key to stop autoboot:  2  1  0 
-2094 bytes read in 1 ms (2 MiB/s)
-## Executing script at 40200000
 ==================================================================
  U-Boot booted from virtio 0 (the medium carrying the boot slot)
 
@@ -33,23 +29,30 @@ Part	Start LBA	End LBA		Name
 	Attributes
 	Type GUID
 	Partition GUID
-  1	0x00000800	0x000187ff	"rootfs"
+  1	0x00000800	0x000107ff	"rootfs"
 	attrs:	0x0000000000000000
 	type:	0fc63daf-8483-4772-8e79-3d69d8477de4
 	guid:	aaaaaaaa-1111-2222-3333-444444444444
-  2	0x00018800	0x000587ff	"boot"
+  2	0x00010800	0x000507ff	"boot"
 	attrs:	0x0000000000000000
 	type:	0fc63daf-8483-4772-8e79-3d69d8477de4
-	guid:	f68a24ea-0920-4c63-a048-2331dad66916
-  3	0x00058800	0x000707ff	"rootfs"
+	guid:	2956445b-9c1a-43a6-a2de-c92b15544943
+  3	0x00050800	0x000607ff	"rootfs"
 	attrs:	0x0000000000000000
 	type:	0fc63daf-8483-4772-8e79-3d69d8477de4
 	guid:	bbbbbbbb-1111-2222-3333-444444444444
- --- load_kernel (from boot slot virtio 0:2) ---
-41792000 bytes read in 74 ms (538.6 MiB/s)
- --- load_rootfs + verify_image: locate rootfs BY NAME rootfs on virtio 0 ---
-66 bytes read in 0 ms
-sha256 for 46000000 ... 46000041 ==> 4d823152d6c5e2b95c45334e43fbc1bece21de5bacf7bdc685328aacb69e4633
- U-Boot: rootfs(name=rootfs, virtio 0) marker sha256 = 4d823152d6c5e2b95c45334e43fbc1bece21de5bacf7bdc685328aacb69e4633
+ --- load_kernel (signed FIT /kernel.itb from boot slot boot on virtio 0) ---
+ U-Boot: boot slot name boot -> virtio 0:0x2
+41793634 bytes read in 84 ms (474.5 MiB/s)
+ --- verify_image: hash the WHOLE partition named rootfs on virtio 0 ---
+
+Device 0: QEMU VirtIO Block Device
+            Type: Hard Disk
+            Capacity: 256.0 MB = 0.2 GB (524288 x 512)
+... is now current device
+
+virtio read: device 0 block # 2048, count 65536 ... 65536 blocks read: OK
+sha256 for 48000000 ... 49ffffff ==> fa7f201f58eac76a7c63d8794fdf50d16c484263203ee445645b0c2db704e3f8
+ U-Boot: rootfs(name=rootfs, virtio 0:0x1) sha256 = fa7f201f58eac76a7c63d8794fdf50d16c484263203ee445645b0c2db704e3f8
  U-Boot: ROOTFS VERIFICATION FAILED -> refusing to boot
 resetting ...
